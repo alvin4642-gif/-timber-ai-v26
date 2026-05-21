@@ -127,10 +127,12 @@ def build_reply(lines, total):
 SPECIES = ["Kapur","Balau","Chengal","Mixed Keruing","Pure Keruing"]
 SMALL_QTY_THRESHOLD = 10
 
-# Plywood selling prices (default — editable in app)
+# Plywood selling prices
+# MR China 3mm = nominal (actual +-1.8mm China)
+# BB/CC Furniture 3mm nominal (actual +-2.2mm)
 PLY_SELL = {
-    "MR China":         {2.2:3.25, 6:6.63, 9:9.36, 12:14.04, 15:19.0,  18:21.63},
-    "WBP (TA)":         {6:11.31, 9:15.6,  12:18.46, 15:26.4, 18:27.5,  25:39.0},
+    "MR China":         {3:3.25,  6:6.63,  9:9.36,  12:14.04, 15:19.0,  18:21.63},
+    "WBP (TA)":         {6:11.31, 9:15.6,  12:18.46, 15:26.4,  18:27.5,  25:39.0},
     "BB/CC Furniture":  {3:5.72,  6:14.3,  9:16.75, 12:21.0,  15:26.4,  18:30.84, 25:44.04},
     "Casting Black China":   {12:18.84, 18:22.08},
     "Casting Black Vietnam": {12:19.625, 18:25.2},
@@ -141,7 +143,7 @@ PLY_SELL = {
 
 # Ying Chuan cost prices
 PLY_COST = {
-    "MR China":         {2.2:2.5,  6:5.1,   9:7.2,   12:10.8,  15:15.2,  18:17.3},
+    "MR China":         {3:2.5,   6:5.1,   9:7.2,   12:10.8,  15:15.2,  18:17.3},
     "WBP (TA)":         {6:8.7,   9:12.0,  12:14.2,  15:22.0,  18:22.0,  25:32.5},
     "BB/CC Furniture":  {3:4.4,   6:11.0,  9:13.4,   12:16.8,  15:22.0,  18:25.7,  25:36.7},
     "Casting Black China":   {12:15.7, 18:18.4},
@@ -151,15 +153,13 @@ PLY_COST = {
     "Fire Retardant BS476": {3:14.0, 6:26.0, 9:37.0, 12:49.0, 15:63.0, 18:70.0, 25:80.0},
 }
 
-# Thickness tolerance reference
-PLY_TOLERANCE = {
-    "MR China":        {"2.2mm": "±1.8mm actual", "3mm": "±2.0mm actual"},
-    "BB/CC Furniture": {"3mm": "±2.2mm actual"},
-    "WBP (TA)":        {"6mm": "±5.5mm actual"},
-    "Marine BS1088":   {"9mm": "±8.5mm actual"},
+# Actual thickness remarks for display
+PLY_ACTUAL_THK = {
+    "MR China":        {3: "actual +-1.8mm (China)"},
+    "BB/CC Furniture": {3: "actual +-2.2mm"},
 }
 
-PLY_MOQ = {"Fire Retardant BS476": {3: 10}, "MR China": {2.2: 10}}
+PLY_MOQ = {"Fire Retardant BS476": {3: 10}, "MR China": {3: 10}}
 
 # ============================================================
 # SESSION STATE
@@ -190,15 +190,15 @@ with c2:
     st.info("V26 Cloud")
 
 # ============================================================
-# RATES (top of page, always visible)
+# RATES (V25 style — always visible across top)
 # ============================================================
-with st.expander("⚙️ Timber Rates (SGD/ton) — click to edit", expanded=False):
-    rc1,rc2,rc3,rc4,rc5 = st.columns(5)
-    with rc1: kapur_rate  = st.number_input("Kapur",         value=3800, step=50, key="r_kapur")
-    with rc2: balau_rate  = st.number_input("Balau",         value=5500, step=50, key="r_balau")
-    with rc3: cheng_rate  = st.number_input("Chengal",       value=6000, step=50, key="r_cheng")
-    with rc4: mkeruing_rate = st.number_input("Mixed Keruing", value=650, step=50, key="r_mker")
-    with rc5: pkeruing_rate = st.number_input("Pure Keruing", value=1000, step=50, key="r_pker")
+st.subheader("Current Rates (SGD/ton)")
+rc1,rc2,rc3,rc4,rc5 = st.columns(5)
+with rc1: kapur_rate    = st.number_input("Kapur",         value=3800, step=50, key="r_kapur")
+with rc2: balau_rate    = st.number_input("Balau",         value=5500, step=50, key="r_balau")
+with rc3: cheng_rate    = st.number_input("Chengal",       value=6000, step=50, key="r_cheng")
+with rc4: mkeruing_rate = st.number_input("Mixed Keruing", value=650,  step=50, key="r_mker")
+with rc5: pkeruing_rate = st.number_input("Pure Keruing",  value=1000, step=50, key="r_pker")
 
 species_rate = {
     "Kapur": kapur_rate, "Balau": balau_rate, "Chengal": cheng_rate,
@@ -561,6 +561,11 @@ with tab_ply:
                 p_thk = st.selectbox("Thickness (mm)", available_thk, key="p_thk")
             with pc3: p_qty = st.number_input("Qty (sheets)", min_value=1, step=1, key="p_qty")
 
+            # Show actual thickness remark if available
+            actual_note = PLY_ACTUAL_THK.get(p_grade, {}).get(p_thk, "")
+            if actual_note:
+                st.caption(f"ℹ️ {p_grade} {p_thk}mm — {actual_note}")
+
             # Show sell price — editable
             default_sell = PLY_SELL.get(p_grade, {}).get(p_thk, 0.0)
             p_sell = st.number_input("Selling Price (S$/sheet)", value=float(default_sell),
@@ -782,28 +787,14 @@ with tab_ply:
         st.subheader("📏 Plywood Thickness Tolerance Reference")
         st.caption("Nominal vs actual thickness by supplier — for quick reference when customers query thickness.")
 
-        tol_data = {
-            "Grade": [
-                "MR China", "MR China",
-                "BB/CC Furniture",
-                "WBP (TA)",
-                "Marine BS1088",
-                "Fire Retardant BS476"
-            ],
-            "Nominal": ["2.2mm","3mm","3mm","6mm","9mm","3mm"],
-            "Actual Thickness": [
-                "±1.8mm","±2.0mm","±2.2mm","±5.5mm","±8.5mm","±2.8mm"
-            ],
-            "Supplier": [
-                "Ying Chuan","Ying Chuan","Ying Chuan",
-                "Ying Chuan","Ying Chuan","Ying Chuan"
-            ],
-            "Notes": [
-                "China origin","China origin","T2 grade","TA grade",
-                "BS1088 certified","BS476 Part 7 Class 1"
-            ]
-        }
-        tol_df = pd.DataFrame(tol_data)
+        tol_rows = [
+            {"Grade": "MR China",             "Nominal": "3mm",  "Actual Thickness": "+-1.8mm", "Supplier": "Ying Chuan", "Notes": "China origin"},
+            {"Grade": "BB/CC Furniture",       "Nominal": "3mm",  "Actual Thickness": "+-2.2mm", "Supplier": "Ying Chuan", "Notes": "T2 grade"},
+            {"Grade": "WBP (TA)",              "Nominal": "6mm",  "Actual Thickness": "+-5.5mm", "Supplier": "Ying Chuan", "Notes": "TA grade"},
+            {"Grade": "Marine BS1088",         "Nominal": "9mm",  "Actual Thickness": "+-8.5mm", "Supplier": "Ying Chuan", "Notes": "BS1088 certified"},
+            {"Grade": "Fire Retardant BS476",  "Nominal": "3mm",  "Actual Thickness": "+-2.8mm", "Supplier": "Ying Chuan", "Notes": "BS476 Part 7 Class 1"},
+        ]
+        tol_df = pd.DataFrame(tol_rows)
         st.dataframe(tol_df, use_container_width=True, hide_index=True)
 
         st.caption("You can add more rows as you discover tolerances from other suppliers.")
