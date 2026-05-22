@@ -58,7 +58,7 @@ st.markdown("""
 .log-total-label { font-size: 14px; color: #0F6E56; font-weight: 600; }
 .log-total-val { font-size: 20px; font-weight: 700; color: #0F6E56; }
 .profit-chip { background:#EAF3DE; color:#3B6D11; font-size:11px; padding:1px 7px; border-radius:99px; margin-left:5px; }
-.warn-chip { background:#FAEEDA; color:#854F0B; font-size:11px; padding:1px 7px; border-radius:99px; margin-left:5px; }
+.warn-chip { background:#FAEEDA; color:#854F0B; font-size:13px; font-weight:600; padding:3px 10px; border-radius:99px; margin-left:5px; }
 
 /* Plywood grade tabs */
 .grade-tab-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -287,7 +287,8 @@ def render_staff_log(log_items, grand_total, cost_total):
     margin = round((profit/grand_total*100),1) if grand_total>0 else 0
     html = '<div class="staff-log"><div class="staff-log-header">Staff Calculation Log</div>'
     for i, item in enumerate(log_items, 1):
-        warn = f'<span class="warn-chip">⚠ small qty</span>' if item.get("small_qty") else ""
+        warn = f'<span class="warn-chip">⚠️ SMALL QTY — adjust price before sending</span>' if item.get("small_qty") else ""
+        moq_warn = f'<div style="background:#FAEEDA;color:#854F0B;font-size:14px;font-weight:600;padding:6px 12px;border-radius:8px;margin-top:4px">⚠️ MOQ APPLIED — {item.get("moq_note","")}</div>' if item.get("moq_flag") else ""
         profit_line = item.get("profit_line","")
         html += f'''
         <div class="log-item">
@@ -648,17 +649,16 @@ with tab_ply:
         st.divider()
         st.subheader("Add Plywood to Order")
         with st.form("add_ply_form",clear_on_submit=True):
-            ap1,ap2,ap3=st.columns([2,1,1])
+            ap1,ap2,ap3,ap4=st.columns([2,1,1,1])
             with ap1: p_grade=st.selectbox("Grade",PLY_GRADES,index=PLY_GRADES.index(st.session_state.sel_grade),key="p_gr")
             with ap2:
                 avail_thk=sorted(PLY_SELL.get(p_grade,{}).keys())
                 p_thk=st.selectbox("Thickness (mm)",avail_thk,key="p_thk")
-            with ap3: p_qty=st.number_input("Qty (sheets)",min_value=1,value=1,step=1,key="p_qty")
-
-            p_sell_def=PLY_SELL.get(p_grade,{}).get(p_thk,0.0)
-            # Dynamic key ensures price resets correctly when grade or thickness changes
-            p_sell_key = f"p_sell_{p_grade}_{p_thk}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
-            p_sell=st.number_input("Selling Price (S$/sheet)",min_value=0.0,value=float(p_sell_def),step=0.5,format="%.2f",key=p_sell_key)
+            with ap3:
+                p_sell_def=PLY_SELL.get(p_grade,{}).get(p_thk,0.0)
+                p_sell_key=f"p_sell_{p_grade}_{p_thk}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
+                p_sell=st.number_input("Selling (S$/sheet)",min_value=0.0,value=float(p_sell_def),step=0.5,format="%.2f",key=p_sell_key)
+            with ap4: p_qty=st.number_input("Qty (sheets)",min_value=1,value=1,step=1,key="p_qty")
 
             note=PLY_ACTUAL.get(p_grade,{}).get(p_thk,"")
             if note: st.caption(f"ℹ️ {note}")
@@ -678,21 +678,8 @@ with tab_ply:
                 st.rerun()
 
         if st.session_state.ply_items:
-            st.subheader("Plywood Order List")
             ply_grand=0; ply_cost_total=0
             for i,item in enumerate(st.session_state.ply_items):
-                pa,pb,pc,pd=st.columns([3,2,1,1])
-                with pa:
-                    st.write(f"**{item['grade']}** {item['thk']}mm")
-                    if item["moq_flag"]:
-                        st.warning(f"⚠️ MOQ {item['actual_qty']} sheets applied (requested {item['qty']})")
-                with pb:
-                    st.write(f"S${item['sell']}/sheet × {item['actual_qty']} = **S${item['line_total']:,.2f}**")
-                    st.caption(f"Profit: S${round(item['profit_ps']*item['actual_qty'],2):,.2f}")
-                with pc:
-                    if st.button("✏️",key=f"ep_{i}"): st.session_state.ply_items.pop(i); st.rerun()
-                with pd:
-                    if st.button("🗑️",key=f"dp_{i}"): st.session_state.ply_items.pop(i); st.rerun()
                 ply_grand+=item["line_total"]
                 ply_cost_total+=item["cost"]*item["actual_qty"]
 
@@ -724,9 +711,14 @@ with tab_ply:
                             "Qty":f"{item['actual_qty']} sheets",
                             "Line total":f"S${item['line_total']:,.2f}",
                         },
-                        "profit_line":f"S${profit_total:,.2f}","margin_pct":f"{margin_pct}%","small_qty":False
+                        "profit_line":f"S${profit_total:,.2f}","margin_pct":f"{margin_pct}%",
+                        "small_qty":False,
+                        "moq_flag":item["moq_flag"],
+                        "moq_note":f"min {item['actual_qty']} sheets (requested {item['qty']})"
                     })
                     cl=f"{item['grade']} plywood {item['thk']}mm @ S${item['sell']}/sheet x {item['actual_qty']} = S${item['line_total']:,.2f}{moq_note}"
+                    if "Fire Retardant" in item['grade']:
+                        cl += "\n  * After treatment plywood may/will be wet & may/will have some powder when dried."
                     ply_reply.append(cl)
 
                 render_staff_log(ply_log,ply_grand,ply_cost_total)
