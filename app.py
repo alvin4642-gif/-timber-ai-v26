@@ -470,15 +470,24 @@ with tab_odd:
                     mm_qthk=inch_to_mm.get(q_thk,round(q_thk*25.4))
                     mm_qwid=inch_to_mm.get(q_wid,round(q_wid*25.4))
                     quote_size=f"{mm_qthk}mm x {mm_qwid}mm x {q_length}ft"
-                pcs_per_ton,pcs,price=calc(q_thk,q_wid,q_length,odd_rate)
-                line_total=round(price*st.session_state.odd_qty,2)
+                # Odd size formula: floor(pcs/ton), rate/floor = price, round to nearest dollar
+                raw = 7200 / (q_thk * q_wid * q_length)
+                pcs_per_ton = round(raw, 4)
+                pcs_floor   = max(math.floor(raw), 1)
+                price_exact = odd_rate / pcs_floor
+                price       = round(price_exact)  # round to nearest dollar
+                line_total  = round(price * st.session_state.odd_qty, 2)
                 st.session_state.odd_items.append({
-                    "species":st.session_state.odd_sp,
-                    "cust_size":cust_size,"quote_size":quote_size,
-                    "price":price,"qty":st.session_state.odd_qty,
-                    "line_total":line_total,"rate":odd_rate,
+                    "species":    st.session_state.odd_sp,
+                    "cust_size":  cust_size,
+                    "quote_size": quote_size,
+                    "price":      price,
+                    "qty":        st.session_state.odd_qty,
+                    "line_total": line_total,
+                    "rate":       odd_rate,
                     "pcs_per_ton":pcs_per_ton,
-                    "small_qty":st.session_state.odd_qty<SMALL_QTY
+                    "pcs_floor":  pcs_floor,
+                    "small_qty":  st.session_state.odd_qty < SMALL_QTY
                 })
                 st.success(f"Added: {cust_size} → priced as {quote_size} @ S${price}/pc")
                 st.rerun()
@@ -519,18 +528,25 @@ with tab_odd:
                 profit=round(item["line_total"]-cost_est,2)
                 margin_pct=round((profit/item["line_total"]*100),1) if item["line_total"]>0 else 0
                 odd_log.append({
-                    "heading":f"{item['species']} (odd size) · Customer: {item['cust_size']} → Priced: {item['quote_size']}",
+                    "heading":f"{item['species']} (odd size)",
                     "rows":{
-                        "Rate":f"S${item['rate']}/ton",
-                        "Pieces per ton":str(item['pcs_per_ton']),
-                        "Price per piece":f"S${item['price']}",
-                        "Qty":f"{item['qty']} pcs",
-                        "Line total":f"S${item['line_total']:,.2f}",
+                        "Customer size":    item['cust_size'],
+                        "Priced as":        item['quote_size'],
+                        "Rate":             f"S${item['rate']}/ton",
+                        "Pcs/ton (raw)":    str(item['pcs_per_ton']),
+                        "Pcs used (floor)": str(item.get('pcs_floor', math.floor(float(item['pcs_per_ton'])))),
+                        "Price per piece":  f"S${item['price']} (rounded to nearest $1)",
+                        "Qty":              f"{item['qty']} pcs",
+                        "Line total":       f"S${item['line_total']:,.2f}",
                     },
                     "profit_line":f"S${profit:,.2f}","margin_pct":f"{margin_pct}%","small_qty":item["small_qty"]
                 })
+                # Customer reply shows BOTH sizes
                 odd_reply.append(
-                    f"{item['species']} timber\n{item['cust_size']} @ S${item['price']}/pcs x {item['qty']} = S${item['line_total']:,.2f}"
+                    f"{item['species']} timber\n"
+                    f"Your size: {item['cust_size']}\n"
+                    f"Supply size: {item['quote_size']}\n"
+                    f"@ S${item['price']}/pcs x {item['qty']} = S${item['line_total']:,.2f}"
                 )
             odd_total=round(odd_total,2); odd_cost=round(odd_cost,2)
             render_staff_log(odd_log,odd_total,odd_cost)
@@ -716,6 +732,13 @@ with tab_ply:
         st.subheader("✂️ Cut-to-Size Plywood Calculator")
         st.caption("Full sheet size: 4' x 8' (1220mm x 2440mm)")
         FULL_W=1220; FULL_L=2440
+
+        # Refresh button — clears all cut-to-size fields
+        if st.button("🔄 Refresh / New Customer", use_container_width=False):
+            for k in ["c_gr","c_thk","c_sell","c_w","c_l","c_qty","cut_reply"]:
+                if k in st.session_state: del st.session_state[k]
+            st.rerun()
+
         with st.form("cut_form",clear_on_submit=False):
             ct1,ct2=st.columns(2)
             with ct1:
@@ -736,31 +759,64 @@ with tab_ply:
             pps=max(pcs_w*pcs_l,1)
             sheets=math.ceil(c_qty/pps)
             price_pc=round(c_sell/pps,2)
-            total=round(price_pc*c_qty,2)
+
+            # Cutting fee calculation
+            # Each piece needs: (cuts along width - 1) + (cuts along length - 1) cuts per sheet
+            # Total cuts = cuts per sheet x sheets needed
+            cuts_per_sheet = (pcs_w - 1) + (pcs_l - 1) if pps > 1 else 0
+            total_cuts = cuts_per_sheet * sheets
+            cut_fee_per_cut = 2.50
+            total_cut_fee = round(total_cuts * cut_fee_per_cut, 2)
+            cut_fee_per_pc = round(total_cut_fee / c_qty, 2) if c_qty > 0 else 0
+
+            ply_cost_only = round(price_pc * c_qty, 2)
+            total = round(ply_cost_only + total_cut_fee, 2)
+            total_per_pc = round(price_pc + cut_fee_per_pc, 2)
+
             cost=PLY_COST.get(c_grade,{}).get(c_thk,0.0)
             cost_pc=round(cost/pps,2)
-            profit_pc=round(price_pc-cost_pc,2)
+            profit_pc=round(total_per_pc-cost_pc,2)
             profit_total=round(profit_pc*c_qty,2)
-            margin=round((profit_pc/price_pc*100),1) if price_pc>0 else 0
+            margin=round((profit_pc/total_per_pc*100),1) if total_per_pc>0 else 0
+
             cr1,cr2,cr3,cr4=st.columns(4)
             with cr1: st.metric("Pcs per sheet",pps)
             with cr2: st.metric("Sheets needed",sheets)
-            with cr3: st.metric("Price per cut pc",f"S${price_pc}")
-            with cr4: st.metric("Total",f"S${total:,.2f}")
-            pm1,pm2,pm3=st.columns(3)
-            with pm1: st.metric("Cost per cut pc",f"S${cost_pc}")
-            with pm2: st.metric("Profit per cut pc",f"S${profit_pc}")
-            with pm3: st.metric("Margin",f"{margin}%")
+            with cr3: st.metric("Ply price/pc",f"S${price_pc}")
+            with cr4: st.metric("Total (incl. cutting)",f"S${total:,.2f}")
+
+            pm1,pm2,pm3,pm4=st.columns(4)
+            with pm1: st.metric("Total cuts needed",total_cuts)
+            with pm2: st.metric("Cutting fee",f"S${total_cut_fee:,.2f}")
+            with pm3: st.metric("Total per pc",f"S${total_per_pc}")
+            with pm4: st.metric("Margin",f"{margin}%")
+
             cut_log=[{"heading":f"{c_grade} {c_thk}mm — Cut {int(c_w)}mm x {int(c_l)}mm",
-                "rows":{"Full sheet":f"{FULL_W}x{FULL_L}mm","Pcs per sheet":f"{pps} ({pcs_w}w x {pcs_l}l)",
-                        "Sheets needed":str(sheets),"Price per cut pc":f"S${price_pc}",
-                        "Qty":f"{c_qty} pcs","Total":f"S${total:,.2f}"},
+                "rows":{
+                    "Full sheet":f"{FULL_W}x{FULL_L}mm",
+                    "Pcs per sheet":f"{pps} ({pcs_w}w x {pcs_l}l)",
+                    "Sheets needed":str(sheets),
+                    "Ply price per pc":f"S${price_pc}",
+                    "Cuts per sheet":str(cuts_per_sheet),
+                    "Total cuts":str(total_cuts),
+                    "Cutting fee (S$2.50/cut)":f"S${total_cut_fee:,.2f}",
+                    "Cutting fee per pc":f"S${cut_fee_per_pc}",
+                    "Total per pc (ply + cut)":f"S${total_per_pc}",
+                    "Qty":f"{c_qty} pcs",
+                    "Grand total":f"S${total:,.2f}",
+                },
                 "profit_line":f"S${profit_total:,.2f}","margin_pct":f"{margin}%","small_qty":False}]
             render_staff_log(cut_log,total,round(cost_pc*c_qty,2))
             st.divider()
-            cut_reply=f"{c_grade} plywood {c_thk}mm\nCut size {int(c_w)}mm x {int(c_l)}mm @ S${price_pc}/pc x {c_qty} = S${total:,.2f}"
+            cut_reply=(
+                f"{c_grade} plywood {c_thk}mm\n"
+                f"Cut size {int(c_w)}mm x {int(c_l)}mm\n"
+                f"Plywood: S${price_pc}/pc x {c_qty} = S${ply_cost_only:,.2f}\n"
+                f"Cutting fee ({total_cuts} cuts @ S$2.50/cut) = S${total_cut_fee:,.2f}\n"
+                f"Total per pc: S${total_per_pc}"
+            )
             cut_full=build_reply([cut_reply],total)
-            cut_edited=st.text_area("Customer Reply",cut_full,height=220,key="cut_reply")
+            cut_edited=st.text_area("Customer Reply",cut_full,height=260,key="cut_reply")
             cx1,cx2=st.columns(2)
             with cx1:
                 st.download_button("📥 Download TXT",data=cut_edited,
@@ -782,7 +838,9 @@ with tab_ply:
             {"Grade":"Marine BS1088",        "Nominal":"9mm",  "Actual":"+-8.5mm","Supplier":"Ying Chuan","Notes":"BS1088 certified"},
             {"Grade":"Fire Retardant BS476", "Nominal":"3mm",  "Actual":"+-2.8mm","Supplier":"Ying Chuan","Notes":"BS476 Part 7 Class 1"},
         ]
-        st.dataframe(pd.DataFrame(tol_rows),use_container_width=True,hide_index=True)
+        tol_df = pd.DataFrame(tol_rows)
+        tol_df.index = [""] * len(tol_df)
+        st.dataframe(tol_df, use_container_width=True)
 
 # ============================================================
 # TAB 4 — SUPPLIERS
