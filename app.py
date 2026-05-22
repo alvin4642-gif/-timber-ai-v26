@@ -650,18 +650,31 @@ with tab_ply:
         st.subheader("Add Plywood to Order")
         with st.form("add_ply_form",clear_on_submit=True):
             ap1,ap2,ap3,ap4=st.columns([2,1,1,1])
-            with ap1: p_grade=st.selectbox("Grade",PLY_GRADES,index=PLY_GRADES.index(st.session_state.sel_grade),key="p_gr")
+            with ap1:
+                # Grade key includes sel_grade so it resets when tab changes
+                p_grade=st.selectbox("Grade",PLY_GRADES,
+                    index=PLY_GRADES.index(st.session_state.sel_grade),key="p_gr")
             with ap2:
                 avail_thk=sorted(PLY_SELL.get(p_grade,{}).keys())
-                p_thk=st.selectbox("Thickness (mm)",avail_thk,key="p_thk")
+                # Thickness key tied to grade so it resets when grade changes
+                p_thk_key=f"p_thk_{p_grade}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
+                p_thk=st.selectbox("Thickness (mm)",avail_thk,key=p_thk_key)
             with ap3:
+                # Always read default from PLY_SELL — never from session state
                 p_sell_def=PLY_SELL.get(p_grade,{}).get(p_thk,0.0)
                 p_sell_key=f"p_sell_{p_grade}_{p_thk}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
-                p_sell=st.number_input("Selling (S$/sheet)",min_value=0.0,value=float(p_sell_def),step=0.5,format="%.2f",key=p_sell_key)
-            with ap4: p_qty=st.number_input("Qty (sheets)",min_value=1,value=1,step=1,key="p_qty")
+                p_sell=st.number_input("Selling (S$/sheet)",min_value=0.0,
+                    value=float(p_sell_def),step=0.5,format="%.2f",key=p_sell_key)
+            with ap4:
+                p_qty=st.number_input("Qty (sheets)",min_value=1,value=1,step=1,key="p_qty")
 
             note=PLY_ACTUAL.get(p_grade,{}).get(p_thk,"")
             if note: st.caption(f"ℹ️ {note}")
+
+            # Safety check — warn if sell price looks wrong
+            expected_sell=PLY_SELL.get(p_grade,{}).get(p_thk,0.0)
+            if p_sell == 0.0:
+                st.warning(f"⚠️ Selling price is S$0.00 — expected S${expected_sell}. Please check.")
 
             add_ply=st.form_submit_button("+ Add Plywood",use_container_width=True)
             if add_ply:
