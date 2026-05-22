@@ -161,6 +161,22 @@ def build_reply(lines,total):
     out.append("TimMac @ Kranji S739570")
     return "\n".join(out)
 
+def render_table(rows):
+    """Safe HTML table — works on all Streamlit versions."""
+    if not rows: return
+    headers = list(rows[0].keys())
+    html = '<table style="width:100%;border-collapse:collapse;font-size:13px">'
+    html += '<thead><tr>' + ''.join(
+        f'<th style="text-align:left;padding:6px 10px;border-bottom:2px solid #1D9E75;color:#555;font-weight:500">{h}</th>'
+        for h in headers) + '</tr></thead><tbody>'
+    for i, row in enumerate(rows):
+        bg = "#f9fdf9" if i % 2 == 0 else "white"
+        html += f'<tr style="background:{bg}">' + ''.join(
+            f'<td style="padding:6px 10px;border-bottom:0.5px solid #eee">{row[h]}</td>'
+            for h in headers) + '</tr>'
+    html += '</tbody></table>'
+    st.markdown(html, unsafe_allow_html=True)
+
 # ============================================================
 # PRICE DATA
 # ============================================================
@@ -838,9 +854,7 @@ with tab_ply:
             {"Grade":"Marine BS1088",        "Nominal":"9mm",  "Actual":"+-8.5mm","Supplier":"Ying Chuan","Notes":"BS1088 certified"},
             {"Grade":"Fire Retardant BS476", "Nominal":"3mm",  "Actual":"+-2.8mm","Supplier":"Ying Chuan","Notes":"BS476 Part 7 Class 1"},
         ]
-        tol_df = pd.DataFrame(tol_rows)
-        tol_df.index = [""] * len(tol_df)
-        st.dataframe(tol_df, use_container_width=True)
+        render_table(tol_rows)
 
 # ============================================================
 # TAB 4 — SUPPLIERS
@@ -874,7 +888,7 @@ with tab_sup:
                     "Profit/sheet":f"S${profit}",
                     "Margin %":f"{margin}%"
                 })
-            st.dataframe(pd.DataFrame(rows),use_container_width=True,hide_index=True)
+            render_table(rows)
         st.info("More suppliers can be added once you onboard them.")
 
     with sup2:
@@ -888,7 +902,7 @@ with tab_sup:
             avg_profit=round(avg_sell-avg_cost,2)
             avg_margin=round((avg_profit/avg_sell*100),1) if avg_sell>0 else 0
             margin_rows.append({"Grade":grade,"Avg Cost":f"S${avg_cost}","Avg Sell":f"S${avg_sell}","Avg Profit":f"S${avg_profit}","Avg Margin":f"{avg_margin}%"})
-        st.dataframe(pd.DataFrame(margin_rows),use_container_width=True,hide_index=True)
+        render_table(margin_rows)
 
 # ============================================================
 # TAB 5 — HISTORY
