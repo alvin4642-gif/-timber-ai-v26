@@ -632,8 +632,9 @@ with tab_ply:
                 with c1: st.write(f"{thk}mm")
                 with c2: st.write(f"S${row['cost']}")
                 with c3:
+                    sp_key = f"sp_{sel}_{thk}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
                     sp=st.number_input("",min_value=0.0,value=float(row["sell_def"]),
-                        step=0.5,format="%.2f",key=f"sp_{sel}_{thk}",label_visibility="collapsed")
+                        step=0.5,format="%.2f",key=sp_key,label_visibility="collapsed")
                     sell_prices[thk]=sp
                 with c4:
                     profit=round(sp-row["cost"],2)
@@ -655,7 +656,9 @@ with tab_ply:
             with ap3: p_qty=st.number_input("Qty (sheets)",min_value=1,value=1,step=1,key="p_qty")
 
             p_sell_def=PLY_SELL.get(p_grade,{}).get(p_thk,0.0)
-            p_sell=st.number_input("Selling Price (S$/sheet)",min_value=0.0,value=float(p_sell_def),step=0.5,format="%.2f",key="p_sell")
+            # Dynamic key ensures price resets correctly when grade or thickness changes
+            p_sell_key = f"p_sell_{p_grade}_{p_thk}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
+            p_sell=st.number_input("Selling Price (S$/sheet)",min_value=0.0,value=float(p_sell_def),step=0.5,format="%.2f",key=p_sell_key)
 
             note=PLY_ACTUAL.get(p_grade,{}).get(p_thk,"")
             if note: st.caption(f"ℹ️ {note}")
