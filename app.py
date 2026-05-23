@@ -323,20 +323,34 @@ with tab_quote:
     with cd2: cust_mobile = st.text_input("Mobile Number", placeholder="e.g. 9123 4567", key="cust_mobile")
     st.divider()
     st.subheader("Add Timber Item")
+    st.caption("Rates above can be changed anytime before Generate Quote — price recalculates automatically.")
+
+    # Edit mode — pre-fill form if editing existing item
+    edit_idx  = st.session_state.get("edit_idx", None)
+    edit_item = st.session_state.order_items[edit_idx] if (edit_idx is not None and edit_idx < len(st.session_state.order_items)) else None
 
     with st.form("add_timber_form", clear_on_submit=True):
         fc1,fc2,fc3,fc4,fc5,fc6,fc7,fc8,fc9 = st.columns([2,1,1,1,1,1,1,1,1])
-        with fc1: f_sp  = st.selectbox("Species",   SPECIES, key="f_sp")
-        with fc2: f_thk = st.number_input("Thickness", min_value=None, value=None, placeholder="e.g. 20", step=1.0, format="%.1f", key="f_thk")
-        with fc3: f_tu  = st.selectbox("Unit",      ["mm","inch"], key="f_tu")
-        with fc4: f_wid = st.number_input("Width",    min_value=None, value=None, placeholder="e.g. 100", step=1.0, format="%.1f", key="f_wid")
-        with fc5: f_wu  = st.selectbox("Unit ",     ["mm","inch"], key="f_wu")
-        with fc6: f_len = st.number_input("Length",   min_value=None, value=None, placeholder="e.g. 2.4", step=0.1, format="%.1f", key="f_len")
-        with fc7: f_lu  = st.selectbox("Unit  ",    ["m","ft"], key="f_lu")
-        with fc8: f_qty = st.number_input("Qty",      min_value=1, value=1, step=1, key="f_qty")
+        with fc1: f_sp  = st.selectbox("Species", SPECIES,
+            index=SPECIES.index(edit_item["species"]) if edit_item else 0, key="f_sp")
+        with fc2: f_thk = st.number_input("Thickness", min_value=None,
+            value=float(inch_to_mm.get(edit_item["thk"], edit_item["thk"])) if edit_item else None,
+            placeholder="e.g. 20", step=1.0, format="%.1f", key="f_thk")
+        with fc3: f_tu  = st.selectbox("Unit",  ["mm","inch"], key="f_tu")
+        with fc4: f_wid = st.number_input("Width", min_value=None,
+            value=float(inch_to_mm.get(edit_item["wid"], edit_item["wid"])) if edit_item else None,
+            placeholder="e.g. 100", step=1.0, format="%.1f", key="f_wid")
+        with fc5: f_wu  = st.selectbox("Unit ", ["mm","inch"], key="f_wu")
+        with fc6: f_len = st.number_input("Length", min_value=None,
+            value=float(edit_item["length"]) if edit_item else None,
+            placeholder="e.g. 2.4", step=0.1, format="%.1f", key="f_len")
+        with fc7: f_lu  = st.selectbox("Unit  ", ["m","ft"],
+            index=1 if edit_item else 0, key="f_lu")
+        with fc8: f_qty = st.number_input("Qty", min_value=1,
+            value=edit_item["qty"] if edit_item else 1, step=1, key="f_qty")
         with fc9:
             st.markdown("<br>", unsafe_allow_html=True)
-            add_btn = st.form_submit_button("+ Add", use_container_width=True)
+            add_btn = st.form_submit_button("💾 Update" if edit_item else "+ Add", use_container_width=True)
 
         if add_btn and f_thk and f_wid and f_len:
             thk    = mm_to_inch(f_thk) if f_tu=="mm" else int(f_thk)
@@ -351,32 +365,41 @@ with tab_quote:
                 mm_thk = inch_to_mm.get(thk,round(thk*25.4))
                 mm_wid = inch_to_mm.get(wid,round(wid*25.4))
                 size_text = f"{mm_thk}mm x {mm_wid}mm x {length}ft"
-            line_total = round(price*f_qty,2)
-            st.session_state.order_items.append({
-                "species":f_sp,"size":size_text,
-                "thk":thk,"wid":wid,"length":length,
-                "price":price,"qty":f_qty,"line_total":line_total,
-                "rate":rate,"pcs_per_ton":pcs_per_ton,
-                "small_qty":f_qty<SMALL_QTY
-            })
+            new_item = {
+                "species":f_sp,"size":size_text,"thk":thk,"wid":wid,"length":length,
+                "price":price,"qty":f_qty,"line_total":round(price*f_qty,2),
+                "rate":rate,"pcs_per_ton":pcs_per_ton,"small_qty":f_qty<SMALL_QTY
+            }
+            if edit_idx is not None and edit_idx < len(st.session_state.order_items):
+                st.session_state.order_items[edit_idx] = new_item
+                del st.session_state["edit_idx"]
+            else:
+                st.session_state.order_items.append(new_item)
             st.rerun()
 
+    # Items list — compact, no heading
     if st.session_state.order_items:
-        st.subheader("Order List")
         for i,item in enumerate(st.session_state.order_items):
             ca,cb,cc,cd = st.columns([3,2,1,1])
             with ca:
-                st.write(f"**{item['species']}**  {item['size']}")
-                if item["small_qty"]:
-                    st.warning(f"⚠️ Small qty ({item['qty']} pcs) — consider adjusting price")
+                label = f"**{item['species']}**  {item['size']}"
+                if edit_idx == i: label += "  ✏️ *editing...*"
+                st.write(label)
+                if item["small_qty"]: st.warning(f"⚠️ Small qty ({item['qty']} pcs)")
             with cb:
-                st.write(f"S${item['price']}/pc × {item['qty']} = **S${item['line_total']:,.2f}**")
+                # Live price using CURRENT rate
+                cur_rate = species_rate[item["species"]]
+                _,_,cur_price = calc(item["thk"],item["wid"],item["length"],cur_rate)
+                cur_total = round(cur_price*item["qty"],2)
+                st.write(f"S${cur_price}/pc × {item['qty']} = **S${cur_total:,.2f}**")
             with cc:
-                if st.button("✏️ Edit",key=f"et_{i}"):
-                    st.session_state.order_items.pop(i); st.rerun()
+                if st.button("✏️",key=f"et_{i}"):
+                    st.session_state["edit_idx"]=i; st.rerun()
             with cd:
                 if st.button("🗑️",key=f"dt_{i}"):
-                    st.session_state.order_items.pop(i); st.rerun()
+                    st.session_state.order_items.pop(i)
+                    if "edit_idx" in st.session_state: del st.session_state["edit_idx"]
+                    st.rerun()
 
         st.divider()
         cg1,cg2 = st.columns([2,1])
@@ -387,25 +410,27 @@ with tab_quote:
         if gen_quote:
             log_items=[]; customer_reply=[]; grand_total=0; cost_total=0
             for item in st.session_state.order_items:
-                gt=item["line_total"]; grand_total+=gt
-                cost_est=round(gt*0.85,2); cost_total+=cost_est
-                profit=round(gt-cost_est,2)
-                margin_pct=round((profit/gt*100),1) if gt>0 else 0
+                # Always recalc with CURRENT rate — so rate change above is reflected
+                cur_rate = species_rate[item["species"]]
+                cur_ppt,_,cur_price = calc(item["thk"],item["wid"],item["length"],cur_rate)
+                gt = round(cur_price*item["qty"],2)
+                grand_total += gt
+                cost_est = round(gt*0.85,2); cost_total += cost_est
+                profit = round(gt-cost_est,2)
+                margin_pct = round((profit/gt*100),1) if gt>0 else 0
                 log_items.append({
                     "heading":f"{item['species']} timber · {item['size']}",
                     "rows":{
-                        "Rate":f"S${item['rate']}/ton",
-                        "Pieces per ton":str(item['pcs_per_ton']),
-                        "Price per piece":f"S${item['price']}",
-                        "Qty":f"{item['qty']} pcs",
-                        "Line total":f"S${gt:,.2f}",
+                        "Rate":           f"S${cur_rate}/ton",
+                        "Pieces per ton": str(cur_ppt),
+                        "Price per piece":f"S${cur_price}",
+                        "Qty":            f"{item['qty']} pcs",
+                        "Line total":     f"S${gt:,.2f}",
                     },
-                    "profit_line":f"S${profit:,.2f}",
-                    "margin_pct":f"{margin_pct}%",
-                    "small_qty":item["small_qty"]
+                    "profit_line":f"S${profit:,.2f}","margin_pct":f"{margin_pct}%","small_qty":item["small_qty"]
                 })
                 customer_reply.append(
-                    f"{item['species']} timber\n{item['size']} @ S${item['price']}/pcs x {item['qty']} = S${gt:,.2f}"
+                    f"{item['species']} timber\n{item['size']} @ S${cur_price}/pcs x {item['qty']} = S${gt:,.2f}"
                 )
             grand_total=round(grand_total,2); cost_total=round(cost_total,2)
 
@@ -524,7 +549,7 @@ with tab_odd:
 
     if st.session_state.odd_items:
         st.divider()
-        st.subheader("Odd Size Order List")
+
         for i,item in enumerate(st.session_state.odd_items):
             oa,ob,oc,od=st.columns([3,2,1,1])
             with oa:
