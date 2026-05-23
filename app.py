@@ -214,8 +214,14 @@ PLY_ACTUAL = {
     "BB/CC Furniture": {3:"actual +-2.2mm"},
 }
 PLY_MOQ = {
-    "Fire Retardant BS476":{3:10},
-    "MR China":            {3:10},
+    "MR China":              {3:10},
+    "WBP (TA)":              {},
+    "BB/CC Furniture":       {3:10},
+    "Casting Black China":   {},
+    "Casting Black Vietnam": {},
+    "Marine BS1088":         {},
+    "T2 Marine":             {},
+    "Fire Retardant BS476":  {3:10},
 }
 
 # ============================================================
@@ -633,47 +639,66 @@ with tab_ply:
 
         st.divider()
         st.subheader("Add Plywood to Order")
-        with st.form("add_ply_form",clear_on_submit=True):
-            ap1,ap2,ap3,ap4=st.columns([2,1,1,1])
-            with ap1:
-                # Grade key includes sel_grade so it resets when tab changes
-                p_grade=st.selectbox("Grade",PLY_GRADES,
-                    index=PLY_GRADES.index(st.session_state.sel_grade),key="p_gr")
-            with ap2:
-                avail_thk=sorted(PLY_SELL.get(p_grade,{}).keys())
-                # Thickness key tied to grade so it resets when grade changes
-                p_thk_key=f"p_thk_{p_grade}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
-                p_thk=st.selectbox("Thickness (mm)",avail_thk,key=p_thk_key)
-            with ap3:
-                # Always read default from PLY_SELL — never from session state
-                p_sell_def=PLY_SELL.get(p_grade,{}).get(p_thk,0.0)
-                p_sell_key=f"p_sell_{p_grade}_{p_thk}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
-                p_sell=st.number_input("Selling (S$/sheet)",min_value=0.0,
-                    value=float(p_sell_def),step=0.5,format="%.2f",key=p_sell_key)
-            with ap4:
-                p_qty=st.number_input("Qty (sheets)",min_value=1,value=1,step=1,key="p_qty")
+        # Grade persists between adds — stored in session state
+        if "ply_cur_grade" not in st.session_state:
+            st.session_state.ply_cur_grade = st.session_state.sel_grade
 
-            note=PLY_ACTUAL.get(p_grade,{}).get(p_thk,"")
-            if note: st.caption(f"ℹ️ {note}")
+        st.markdown("**Select Grade & Thickness**")
+        pg1,pg2 = st.columns([2,2])
+        with pg1:
+            p_grade = st.selectbox("Grade", PLY_GRADES,
+                index=PLY_GRADES.index(st.session_state.ply_cur_grade),
+                key="p_gr_sel")
+            # Update current grade in session
+            st.session_state.ply_cur_grade = p_grade
+        with pg2:
+            avail_thk = sorted(PLY_SELL.get(p_grade, {}).keys())
+            p_thk_key = f"p_thk_{p_grade}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
+            p_thk = st.selectbox("Thickness (mm)", avail_thk, key=p_thk_key)
 
-            # Safety check — warn if sell price looks wrong
-            expected_sell=PLY_SELL.get(p_grade,{}).get(p_thk,0.0)
-            if p_sell == 0.0:
-                st.warning(f"⚠️ Selling price is S$0.00 — expected S${expected_sell}. Please check.")
+        # Always read sell price directly from PLY_SELL — no session cache
+        p_sell_def = PLY_SELL.get(p_grade, {}).get(p_thk, 0.0)
+        p_cost_def = PLY_COST.get(p_grade, {}).get(p_thk, 0.0)
+        note       = PLY_ACTUAL.get(p_grade, {}).get(p_thk, "")
+        moq        = PLY_MOQ.get(p_grade, {}).get(p_thk, 1)
 
-            add_ply=st.form_submit_button("+ Add Plywood",use_container_width=True)
-            if add_ply:
-                cost=PLY_COST.get(p_grade,{}).get(p_thk,0.0)
-                moq=PLY_MOQ.get(p_grade,{}).get(p_thk,1)
-                actual_qty=max(p_qty,moq)
-                moq_flag=actual_qty>p_qty
-                line_total=round(p_sell*actual_qty,2)
-                st.session_state.ply_items.append({
-                    "grade":p_grade,"thk":p_thk,"sell":p_sell,"cost":cost,
-                    "qty":p_qty,"actual_qty":actual_qty,"moq_flag":moq_flag,
-                    "line_total":line_total,"profit_ps":round(p_sell-cost,2)
-                })
-                st.rerun()
+        if note: st.caption(f"ℹ️ {note}")
+        if moq > 1: st.caption(f"⚠️ MOQ: minimum {moq} sheets for this item")
+
+        pg3,pg4,pg5 = st.columns([2,1,1])
+        with pg3:
+            # Use grade+thk as key so it resets correctly per item
+            p_sell_key = f"ply_sell_{p_grade}_{p_thk}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
+            p_sell = st.number_input("Selling Price (S$/sheet)",
+                min_value=0.0, value=float(p_sell_def),
+                step=0.5, format="%.2f", key=p_sell_key)
+        with pg4:
+            p_qty = st.number_input("Qty (sheets)", min_value=1, value=1, step=1, key="ply_qty_inp")
+        with pg5:
+            st.markdown("<br>", unsafe_allow_html=True)
+            profit_preview = round(p_sell - p_cost_def, 2)
+            st.caption(f"Profit: S${profit_preview}/sheet")
+
+        if p_sell == 0.0:
+            st.warning(f"⚠️ Selling price is S$0.00 — expected S${p_sell_def}. Please check.")
+
+        # Two ways to add: button OR press Enter
+        col_add, col_note = st.columns([1,3])
+        with col_add:
+            add_ply = st.button("+ Add Plywood", type="primary", use_container_width=True, key="add_ply_btn")
+        with col_note:
+            st.caption("Click '+ Add Plywood' or press Enter after Qty to add. Grade stays selected for next item.")
+
+        if add_ply:
+            actual_qty = max(p_qty, moq)
+            moq_flag   = actual_qty > p_qty
+            line_total = round(p_sell * actual_qty, 2)
+            st.session_state.ply_items.append({
+                "grade":p_grade,"thk":p_thk,"sell":p_sell,"cost":p_cost_def,
+                "qty":p_qty,"actual_qty":actual_qty,"moq_flag":moq_flag,
+                "line_total":line_total,"profit_ps":round(p_sell-p_cost_def,2)
+            })
+            st.rerun()
 
         if st.session_state.ply_items:
             ply_grand=0; ply_cost_total=0
@@ -685,10 +710,11 @@ with tab_ply:
             ply_profit=round(ply_grand-ply_cost_total,2)
             ply_margin=round((ply_profit/ply_grand*100),1) if ply_grand>0 else 0
 
-            pm1,pm2,pm3=st.columns(3)
-            with pm1: st.metric("Plywood Total",f"S${ply_grand:,.2f}")
-            with pm2: st.metric("Profit",f"S${ply_profit:,.2f}")
-            with pm3: st.metric("Margin",f"{ply_margin}%")
+            pm1,pm2,pm3,pm4=st.columns(4)
+            with pm1: st.metric("Items Quoted",   len(st.session_state.ply_items))
+            with pm2: st.metric("Plywood Total",  f"S${ply_grand:,.2f}")
+            with pm3: st.metric("Profit",         f"S${ply_profit:,.2f}")
+            with pm4: st.metric("Margin",         f"{ply_margin}%")
 
             pg1,pg2=st.columns([2,1])
             with pg1: gen_ply=st.button("GENERATE PLYWOOD QUOTE",type="primary",use_container_width=True)
