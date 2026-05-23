@@ -612,30 +612,30 @@ with tab_ply:
 
         st.divider()
         sel = st.session_state.sel_grade
-        st.markdown(f"#### {sel} — Price Reference")
 
-        # Read-only price reference table (no session state — no caching bugs)
-        if sel in PLY_SELL:
-            tbl_rows = []
-            for thk in sorted(PLY_SELL[sel].keys()):
-                cost     = PLY_COST.get(sel,{}).get(thk,0.0)
-                sell_def = PLY_SELL[sel][thk]
-                profit   = round(sell_def - cost, 2)
-                margin   = round((profit/sell_def*100),1) if sell_def>0 else 0
-                note     = PLY_ACTUAL.get(sel,{}).get(thk,"")
-                moq      = PLY_MOQ.get(sel,{}).get(thk,1)
-                notes    = []
-                if note: notes.append(note)
-                if moq>1: notes.append(f"MOQ {moq} sheets")
-                tbl_rows.append({
-                    "Thickness":  f"{thk}mm",
-                    "YC Cost":    f"S${cost}",
-                    "Sell Price": f"S${sell_def}",
-                    "Profit":     f"S${profit}",
-                    "Margin":     f"{margin}%",
-                    "Notes":      " · ".join(notes) if notes else "—"
-                })
-            render_table(tbl_rows)
+        # Price reference — hidden by default, expand to view
+        with st.expander(f"📋 {sel} — Price Reference (click to view)", expanded=False):
+            if sel in PLY_SELL:
+                tbl_rows = []
+                for thk in sorted(PLY_SELL[sel].keys()):
+                    cost     = PLY_COST.get(sel,{}).get(thk,0.0)
+                    sell_def = PLY_SELL[sel][thk]
+                    profit   = round(sell_def - cost, 2)
+                    margin   = round((profit/sell_def*100),1) if sell_def>0 else 0
+                    note     = PLY_ACTUAL.get(sel,{}).get(thk,"")
+                    moq      = PLY_MOQ.get(sel,{}).get(thk,1)
+                    notes    = []
+                    if note: notes.append(note)
+                    if moq>1: notes.append(f"MOQ {moq} sheets")
+                    tbl_rows.append({
+                        "Thickness":  f"{thk}mm",
+                        "YC Cost":    f"S${cost}",
+                        "Sell Price": f"S${sell_def}",
+                        "Profit":     f"S${profit}",
+                        "Margin":     f"{margin}%",
+                        "Notes":      " · ".join(notes) if notes else "—"
+                    })
+                render_table(tbl_rows)
 
         st.divider()
         st.subheader("Add Plywood to Order")
@@ -682,21 +682,29 @@ with tab_ply:
         if p_sell == 0.0:
             st.warning(f"⚠️ Selling price is S$0.00 — expected S${p_sell_def}. Please check.")
 
-        # Two ways to add: button OR press Enter
-        col_add, col_note = st.columns([1,3])
-        with col_add:
-            add_ply = st.button("+ Add Plywood", type="primary", use_container_width=True, key="add_ply_btn")
-        with col_note:
-            st.caption("Click '+ Add Plywood' or press Enter after Qty to add. Grade stays selected for next item.")
+        # Wrap qty + button in a mini form so pressing Enter submits
+        with st.form("ply_add_form", clear_on_submit=True):
+            fa1, fa2, fa3 = st.columns([2,1,1])
+            with fa1:
+                p_sell_key2 = f"ply_sell2_{p_grade}_{p_thk}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
+                p_sell_f = st.number_input("Selling Price (S$/sheet)",
+                    min_value=0.0, value=float(p_sell_def),
+                    step=0.5, format="%.2f", key=p_sell_key2)
+            with fa2:
+                p_qty_f = st.number_input("Qty (sheets)", min_value=1, value=1, step=1, key="ply_qty_form")
+            with fa3:
+                st.markdown("<br>", unsafe_allow_html=True)
+                add_ply = st.form_submit_button("+ Add Plywood", type="primary", use_container_width=True)
+            st.caption("Press Enter or click '+ Add Plywood'. Grade stays selected for next item.")
 
         if add_ply:
-            actual_qty = max(p_qty, moq)
-            moq_flag   = actual_qty > p_qty
-            line_total = round(p_sell * actual_qty, 2)
+            actual_qty = max(p_qty_f, moq)
+            moq_flag   = actual_qty > p_qty_f
+            line_total = round(p_sell_f * actual_qty, 2)
             st.session_state.ply_items.append({
-                "grade":p_grade,"thk":p_thk,"sell":p_sell,"cost":p_cost_def,
-                "qty":p_qty,"actual_qty":actual_qty,"moq_flag":moq_flag,
-                "line_total":line_total,"profit_ps":round(p_sell-p_cost_def,2)
+                "grade":p_grade,"thk":p_thk,"sell":p_sell_f,"cost":p_cost_def,
+                "qty":p_qty_f,"actual_qty":actual_qty,"moq_flag":moq_flag,
+                "line_total":line_total,"profit_ps":round(p_sell_f-p_cost_def,2)
             })
             st.rerun()
 
@@ -774,20 +782,29 @@ with tab_ply:
                 if k in st.session_state: del st.session_state[k]
             st.rerun()
 
-        with st.form("cut_form",clear_on_submit=False):
-            ct1,ct2=st.columns(2)
-            with ct1:
-                c_grade=st.selectbox("Plywood Grade",PLY_GRADES,key="c_gr")
-                c_thk=st.selectbox("Thickness (mm)",sorted(PLY_SELL.get(c_grade,{}).keys()),key="c_thk")
-            with ct2:
-                c_sell_def=PLY_SELL.get(c_grade,{}).get(c_thk,0.0)
-                c_sell=st.number_input("Selling Price per full sheet (S$)",min_value=0.0,value=float(c_sell_def),step=0.5,format="%.2f",key="c_sell")
+        # Cut-to-size: grade and thk outside form so sell price updates correctly
+        cut_col1, cut_col2 = st.columns(2)
+        with cut_col1:
+            c_grade = st.selectbox("Plywood Grade", PLY_GRADES, key="cut_grade_sel")
+        with cut_col2:
+            c_thk_opts = sorted(PLY_SELL.get(c_grade, {}).keys())
+            c_thk_key  = f"cut_thk_{c_grade}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
+            c_thk      = st.selectbox("Thickness (mm)", c_thk_opts, key=c_thk_key)
+
+        # Sell price key is grade+thk specific — always shows correct default
+        c_sell_def = PLY_SELL.get(c_grade, {}).get(c_thk, 0.0)
+        c_sell_key = f"cut_sell_{c_grade}_{c_thk}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
+
+        with st.form("cut_form", clear_on_submit=False):
+            c_sell = st.number_input("Selling Price per full sheet (S$)",
+                min_value=0.0, value=float(c_sell_def),
+                step=0.5, format="%.2f", key=c_sell_key)
             st.markdown("**Cut dimensions required**")
-            cd1,cd2,cd3=st.columns(3)
-            with cd1: c_w=st.number_input("Cut Width (mm)",min_value=None,value=None,placeholder="e.g. 800",step=10.0,key="c_w")
-            with cd2: c_l=st.number_input("Cut Length (mm)",min_value=None,value=None,placeholder="e.g. 800",step=10.0,key="c_l")
-            with cd3: c_qty=st.number_input("Qty (cut pcs)",min_value=1,value=10,step=1,key="c_qty")
-            calc_cut=st.form_submit_button("Calculate",use_container_width=True,type="primary")
+            cd1,cd2,cd3 = st.columns(3)
+            with cd1: c_w   = st.number_input("Cut Width (mm)",  min_value=None, value=None, placeholder="e.g. 800", step=10.0, key="cut_w")
+            with cd2: c_l   = st.number_input("Cut Length (mm)", min_value=None, value=None, placeholder="e.g. 800", step=10.0, key="cut_l")
+            with cd3: c_qty = st.number_input("Qty (cut pcs)",   min_value=1,    value=10,   step=1,                key="cut_qty")
+            calc_cut = st.form_submit_button("Calculate", use_container_width=True, type="primary")
 
         if calc_cut and c_w and c_l:
             pcs_w=math.floor(FULL_W/c_w); pcs_l=math.floor(FULL_L/c_l)
