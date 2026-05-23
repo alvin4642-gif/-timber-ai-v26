@@ -606,45 +606,30 @@ with tab_ply:
 
         st.divider()
         sel = st.session_state.sel_grade
-        st.markdown(f"#### {sel}")
+        st.markdown(f"#### {sel} — Price Reference")
 
-        # Build editable price table for selected grade
+        # Read-only price reference table (no session state — no caching bugs)
         if sel in PLY_SELL:
-            rows=[]
+            tbl_rows = []
             for thk in sorted(PLY_SELL[sel].keys()):
                 cost     = PLY_COST.get(sel,{}).get(thk,0.0)
                 sell_def = PLY_SELL[sel][thk]
+                profit   = round(sell_def - cost, 2)
+                margin   = round((profit/sell_def*100),1) if sell_def>0 else 0
                 note     = PLY_ACTUAL.get(sel,{}).get(thk,"")
                 moq      = PLY_MOQ.get(sel,{}).get(thk,1)
-                rows.append({"thk":thk,"cost":cost,"sell_def":sell_def,"note":note,"moq":moq})
-
-            # Show as table with editable sell price
-            hd1,hd2,hd3,hd4,hd5 = st.columns([1,1,1,1,2])
-            with hd1: st.markdown("**Thickness**")
-            with hd2: st.markdown("**YC Cost**")
-            with hd3: st.markdown("**Selling Price**")
-            with hd4: st.markdown("**Profit/sheet**")
-            with hd5: st.markdown("**Notes**")
-
-            sell_prices={}
-            for row in rows:
-                thk=row["thk"]
-                c1,c2,c3,c4,c5=st.columns([1,1,1,1,2])
-                with c1: st.write(f"{thk}mm")
-                with c2: st.write(f"S${row['cost']}")
-                with c3:
-                    sp_key = f"sp_{sel}_{thk}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
-                    sp=st.number_input("",min_value=0.0,value=float(row["sell_def"]),
-                        step=0.5,format="%.2f",key=sp_key,label_visibility="collapsed")
-                    sell_prices[thk]=sp
-                with c4:
-                    profit=round(sp-row["cost"],2)
-                    st.markdown(f'<span class="profit-chip">S${profit}</span>',unsafe_allow_html=True)
-                with c5:
-                    notes=[]
-                    if row["note"]: notes.append(row["note"])
-                    if row["moq"]>1: notes.append(f"MOQ {row['moq']} sheets")
-                    st.caption(" · ".join(notes) if notes else "—")
+                notes    = []
+                if note: notes.append(note)
+                if moq>1: notes.append(f"MOQ {moq} sheets")
+                tbl_rows.append({
+                    "Thickness":  f"{thk}mm",
+                    "YC Cost":    f"S${cost}",
+                    "Sell Price": f"S${sell_def}",
+                    "Profit":     f"S${profit}",
+                    "Margin":     f"{margin}%",
+                    "Notes":      " · ".join(notes) if notes else "—"
+                })
+            render_table(tbl_rows)
 
         st.divider()
         st.subheader("Add Plywood to Order")
