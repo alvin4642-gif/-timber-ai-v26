@@ -665,37 +665,30 @@ with tab_ply:
         if note: st.caption(f"ℹ️ {note}")
         if moq > 1: st.caption(f"⚠️ MOQ: minimum {moq} sheets for this item")
 
-        pg3,pg4,pg5 = st.columns([2,1,1])
-        with pg3:
-            # Use grade+thk as key so it resets correctly per item
-            p_sell_key = f"ply_sell_{p_grade}_{p_thk}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
-            p_sell = st.number_input("Selling Price (S$/sheet)",
-                min_value=0.0, value=float(p_sell_def),
-                step=0.5, format="%.2f", key=p_sell_key)
-        with pg4:
-            p_qty = st.number_input("Qty (sheets)", min_value=1, value=1, step=1, key="ply_qty_inp")
-        with pg5:
-            st.markdown("<br>", unsafe_allow_html=True)
-            profit_preview = round(p_sell - p_cost_def, 2)
-            st.caption(f"Profit: S${profit_preview}/sheet")
+        # Single row inside form — Enter key works, grade stays selected
+        # Profit preview uses p_sell_def (before form submit) — no reference error
+        profit_preview  = round(p_sell_def - p_cost_def, 2)
+        margin_preview  = round((profit_preview / p_sell_def * 100), 1) if p_sell_def > 0 else 0
 
-        if p_sell == 0.0:
-            st.warning(f"⚠️ Selling price is S$0.00 — expected S${p_sell_def}. Please check.")
-
-        # Wrap qty + button in a mini form so pressing Enter submits
         with st.form("ply_add_form", clear_on_submit=True):
-            fa1, fa2, fa3 = st.columns([2,1,1])
+            fa1, fa2, fa3, fa4 = st.columns([2,1,1,1])
             with fa1:
-                p_sell_key2 = f"ply_sell2_{p_grade}_{p_thk}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
+                p_sell_key = f"ply_sell_{p_grade}_{p_thk}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
                 p_sell_f = st.number_input("Selling Price (S$/sheet)",
                     min_value=0.0, value=float(p_sell_def),
-                    step=0.5, format="%.2f", key=p_sell_key2)
+                    step=0.5, format="%.2f", key=p_sell_key)
             with fa2:
                 p_qty_f = st.number_input("Qty (sheets)", min_value=1, value=1, step=1, key="ply_qty_form")
             with fa3:
+                st.markdown(f"<br><small>Default profit:<br>S${profit_preview}/sheet ({margin_preview}%)</small>",
+                    unsafe_allow_html=True)
+            with fa4:
                 st.markdown("<br>", unsafe_allow_html=True)
                 add_ply = st.form_submit_button("+ Add Plywood", type="primary", use_container_width=True)
             st.caption("Press Enter or click '+ Add Plywood'. Grade stays selected for next item.")
+
+        if p_sell_def == 0.0:
+            st.warning(f"⚠️ Selling price is S$0.00 — expected S${PLY_SELL.get(p_grade,{}).get(p_thk,0)}. Please check.")
 
         if add_ply:
             actual_qty = max(p_qty_f, moq)
