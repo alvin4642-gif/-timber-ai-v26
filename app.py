@@ -70,6 +70,9 @@ st.markdown("""
 .sup-avatar { width:44px; height:44px; border-radius:50%; background:#E1F5EE; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:600; color:#0F6E56; flex-shrink:0; }
 .sup-name { font-size:18px; font-weight:600; color:inherit; }
 .sup-sub { font-size:12px; color:#888; margin-top:2px; }
+
+/* Item row card */
+.item-row { background:#f8fdf9; border:1px solid #e0ede8; border-radius:8px; padding:10px 14px; margin-bottom:6px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -84,23 +87,54 @@ def load_history():
     gist_id = st.secrets.get("gist_id","")
     if not gist_id: return []
     try:
-        r = requests.get(f"https://api.github.com/gists/{gist_id}", headers=gist_headers(), timeout=10)
+        r = requests.get(
+            f"https://api.github.com/gists/{gist_id}",
+            headers=gist_headers(), timeout=15)
         if r.status_code == 200:
-            content = r.json()["files"]["timber_quotes.json"]["content"]
-            return json.loads(content)
-    except: pass
+            files = r.json().get("files", {})
+            if "timber_quotes.json" not in files:
+                return []
+            raw = files["timber_quotes.json"]["content"]
+            if not raw or raw.strip() == "[]":
+                return []
+            return json.loads(raw)
+        elif r.status_code == 401:
+            st.warning("⚠️ GitHub token expired. Please update in Streamlit secrets.")
+        elif r.status_code == 404:
+            st.warning("⚠️ Gist not found. Please check gist_id in Streamlit secrets.")
+    except Exception as e:
+        st.warning(f"⚠️ Could not load history: {str(e)}")
     return []
 
 def save_history(history):
     gist_id = st.secrets.get("gist_id","")
-    if not gist_id: return False
+    token   = st.secrets.get("github_token","")
+    if not gist_id:
+        st.error("❌ gist_id not set in Streamlit secrets. Quote not saved.")
+        return False
+    if not token:
+        st.error("❌ github_token not set in Streamlit secrets. Quote not saved.")
+        return False
     try:
-        r = requests.patch(f"https://api.github.com/gists/{gist_id}",
+        r = requests.patch(
+            f"https://api.github.com/gists/{gist_id}",
             headers=gist_headers(),
             json={"files":{"timber_quotes.json":{"content":json.dumps(history,indent=2)}}},
-            timeout=10)
-        return r.status_code == 200
-    except: return False
+            timeout=15)
+        if r.status_code == 200:
+            return True
+        elif r.status_code == 401:
+            st.error("❌ GitHub token expired or invalid. Please update your token in Streamlit secrets.")
+            return False
+        elif r.status_code == 404:
+            st.error("❌ Gist not found. Please check your gist_id in Streamlit secrets.")
+            return False
+        else:
+            st.error(f"❌ Could not save to Gist. Status: {r.status_code}. Response: {r.text[:200]}")
+            return False
+    except Exception as e:
+        st.error(f"❌ Network error saving to Gist: {str(e)}")
+        return False
 
 def save_quote(customer, mobile, total, items, quote_text, cost_total=0):
     history = load_history()
@@ -124,7 +158,7 @@ def delete_quote(qid):
     save_history([q for q in history if q.get("id") != qid])
 
 # ============================================================
-# CALC FUNCTIONS (unchanged from V25)
+# CALC FUNCTIONS
 # ============================================================
 inch_to_mm = {1:20,2:43,3:70,4:93,5:117,6:143,7:168,8:193,9:218,10:243,12:293}
 
@@ -150,12 +184,16 @@ def calc(thk,wid,length,rate):
 def is_keruing(species):
     return species in ["Mixed Keruing","Pure Keruing"]
 
-def build_reply(lines, total, skip_length_tol=False, extra_note=""):
+def build_reply(lines, total, is_timber=True, extra_note=""):
+    """
+    is_timber=True  → include thickness/width AND length tolerances
+    is_timber=False → include thickness/width tolerance ONLY (no length tolerance)
+    """
     out = list(lines)
     out.append(f"\nTotal : S${total:,.2f}")
     out.append("\nTolerances:")
     out.append("- Thickness/Width: +-1~2mm")
-    if not skip_length_tol:
+    if is_timber:
         out.append("- Length: +-25~50mm")
     if extra_note:
         out.append(extra_note)
@@ -165,7 +203,6 @@ def build_reply(lines, total, skip_length_tol=False, extra_note=""):
     return "\n".join(out)
 
 def render_table(rows):
-    """Safe HTML table — works on all Streamlit versions."""
     if not rows: return
     headers = list(rows[0].keys())
     html = '<table style="width:100%;border-collapse:collapse;font-size:13px">'
@@ -248,13 +285,15 @@ if "odd_qtu"      not in st.session_state: st.session_state.odd_qtu     = "mm"
 if "odd_qwu"      not in st.session_state: st.session_state.odd_qwu     = "mm"
 if "odd_qlu"      not in st.session_state: st.session_state.odd_qlu     = "m"
 if "odd_qty"      not in st.session_state: st.session_state.odd_qty     = 1
+if "cust_name"    not in st.session_state: st.session_state.cust_name   = ""
+if "cust_mobile"  not in st.session_state: st.session_state.cust_mobile = ""
 
 def reset_all():
     for k in list(st.session_state.keys()): del st.session_state[k]
     st.rerun()
 
 # ============================================================
-# HEADER — Option A style
+# HEADER
 # ============================================================
 st.markdown("""
 <div class="app-header">
@@ -264,7 +303,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================
-# RATES — V25 style always visible
+# RATES
 # ============================================================
 st.subheader("Current Rates (SGD/ton)")
 rc1,rc2,rc3,rc4,rc5 = st.columns(5)
@@ -322,8 +361,22 @@ def render_staff_log(log_items, grand_total, cost_total):
 with tab_quote:
     st.markdown("#### Customer Details")
     cd1,cd2 = st.columns(2)
-    with cd1: cust_name   = st.text_input("Customer Name / Company", placeholder="e.g. ABC Construction Pte Ltd", key="cust_name")
-    with cd2: cust_mobile = st.text_input("Mobile Number", placeholder="e.g. 9123 4567", key="cust_mobile")
+    with cd1:
+        cust_name = st.text_input(
+            "Customer Name / Company",
+            value=st.session_state.cust_name,
+            placeholder="e.g. ABC Construction Pte Ltd",
+            key="cust_name_inp"
+        )
+        st.session_state.cust_name = cust_name
+    with cd2:
+        cust_mobile = st.text_input(
+            "Mobile Number",
+            value=st.session_state.cust_mobile,
+            placeholder="e.g. 9123 4567",
+            key="cust_mobile_inp"
+        )
+        st.session_state.cust_mobile = cust_mobile
     st.divider()
     st.subheader("Add Timber Item")
     st.caption("Rates above can be changed anytime before Generate Quote — price recalculates automatically.")
@@ -365,33 +418,37 @@ with tab_quote:
             })
             st.rerun()
 
-    # Items list — compact, same layout as plywood (no edit button)
+    # Items list — clean card style, no LaTeX issue
     if st.session_state.order_items:
-        for i,item in enumerate(st.session_state.order_items):
-            ca,cb,cc = st.columns([3,2,1])
-            with ca:
-                st.write(f"**{item['species']}**  {item['size']}")
-            with cb:
-                # Live price using CURRENT rate
-                cur_rate = species_rate[item["species"]]
-                _,_,cur_price = calc(item["thk"],item["wid"],item["length"],cur_rate)
-                cur_total = round(cur_price*item["qty"],2)
-                st.write(f"S${cur_price}/pc × {item['qty']} = **S${cur_total:,.2f}**")
-            with cc:
-                if st.button("🗑️",key=f"dt_{i}"):
+        for i, item in enumerate(st.session_state.order_items):
+            cur_rate = species_rate[item["species"]]
+            _,_,cur_price = calc(item["thk"],item["wid"],item["length"],cur_rate)
+            cur_total = round(cur_price * item["qty"], 2)
+
+            col_a, col_b, col_c = st.columns([3, 3, 1])
+            with col_a:
+                st.markdown(f"**{item['species']}** &nbsp; {item['size']}", unsafe_allow_html=True)
+            with col_b:
+                # Use markdown with escaped $ to avoid LaTeX rendering
+                st.markdown(
+                    f"S\\${cur_price}/pc &nbsp;×&nbsp; {item['qty']} pcs &nbsp;= &nbsp;"
+                    f"**S\\${cur_total:,.2f}**",
+                    unsafe_allow_html=True
+                )
+            with col_c:
+                if st.button("🗑️", key=f"dt_{i}"):
                     st.session_state.order_items.pop(i)
                     st.rerun()
 
         st.divider()
         cg1,cg2 = st.columns([2,1])
-        with cg1: gen_quote = st.button("GENERATE QUOTE",type="primary",use_container_width=True)
+        with cg1: gen_quote = st.button("GENERATE QUOTE", type="primary", use_container_width=True)
         with cg2:
-            if st.button("RESET ALL",use_container_width=True): reset_all()
+            if st.button("RESET ALL", use_container_width=True): reset_all()
 
         if gen_quote:
             log_items=[]; customer_reply=[]; grand_total=0; cost_total=0
             for item in st.session_state.order_items:
-                # Always recalc with CURRENT rate — so rate change above is reflected
                 cur_rate = species_rate[item["species"]]
                 cur_ppt,_,cur_price = calc(item["thk"],item["wid"],item["length"],cur_rate)
                 gt = round(cur_price*item["qty"],2)
@@ -426,8 +483,9 @@ with tab_quote:
             st.divider()
 
             st.subheader("Customer Reply (edit before sending)")
-            reply_text=build_reply(customer_reply,grand_total)
-            edited_reply=st.text_area("",reply_text,height=350,key="cust_reply_q")
+            # Timber reply — include length tolerance (is_timber=True)
+            reply_text = build_reply(customer_reply, grand_total, is_timber=True)
+            edited_reply = st.text_area("", reply_text, height=350, key="cust_reply_q")
 
             a1,a2,a3=st.columns(3)
             with a1:
@@ -437,8 +495,8 @@ with tab_quote:
             with a2:
                 if st.button("💾 Save to History",type="primary",use_container_width=True):
                     ok=save_quote(
-                        st.session_state.get("cust_name",""),
-                        st.session_state.get("cust_mobile",""),
+                        st.session_state.cust_name,
+                        st.session_state.cust_mobile,
                         grand_total,len(customer_reply),edited_reply,cost_total)
                     if ok: st.success("✅ Saved!")
                     else:  st.error("❌ Could not save.")
@@ -447,10 +505,10 @@ with tab_quote:
                     file_name="quote_copy.txt",mime="text/plain",use_container_width=True)
     else:
         st.info("Add items above to build your order list.")
-        if st.button("RESET ALL",use_container_width=True): reset_all()
+        if st.button("RESET ALL", use_container_width=True): reset_all()
 
 # ============================================================
-# TAB 2 — ODD SIZE (persistent inputs)
+# TAB 2 — ODD SIZE
 # ============================================================
 with tab_odd:
     st.subheader("📐 Odd Size Timber")
@@ -488,7 +546,6 @@ with tab_odd:
             cthk=st.session_state.odd_cthk; cwid=st.session_state.odd_cwid; clen=st.session_state.odd_clen
             qthk=st.session_state.odd_qthk; qwid=st.session_state.odd_qwid; qlen=st.session_state.odd_qlen
             if cthk and cwid and clen and qthk and qwid and qlen:
-                # Customer size display
                 ctu=st.session_state.odd_ctu; cwu=st.session_state.odd_cwu; clu=st.session_state.odd_clu
                 qtu=st.session_state.odd_qtu; qwu=st.session_state.odd_qwu; qlu=st.session_state.odd_qlu
                 if ctu=="inch": cust_size=f'{cthk}" x {cwid}" x {clen}{"ft" if clu=="ft" else "m"}'
@@ -502,12 +559,11 @@ with tab_odd:
                     mm_qthk=inch_to_mm.get(q_thk,round(q_thk*25.4))
                     mm_qwid=inch_to_mm.get(q_wid,round(q_wid*25.4))
                     quote_size=f"{mm_qthk}mm x {mm_qwid}mm x {q_length}ft"
-                # Odd size formula: floor(pcs/ton), rate/floor = price, round to nearest dollar
                 raw = 7200 / (q_thk * q_wid * q_length)
                 pcs_per_ton = round(raw, 4)
                 pcs_floor   = max(math.floor(raw), 1)
                 price_exact = odd_rate / pcs_floor
-                price       = round(price_exact)  # round to nearest dollar
+                price       = round(price_exact)
                 line_total  = round(price * st.session_state.odd_qty, 2)
                 st.session_state.odd_items.append({
                     "species":    st.session_state.odd_sp,
@@ -535,12 +591,15 @@ with tab_odd:
         st.divider()
 
         for i,item in enumerate(st.session_state.odd_items):
-            oa,ob,oc,od=st.columns([3,2,1,1])
+            oa,ob_col,oc,od=st.columns([3,3,1,1])
             with oa:
-                st.write(f"**{item['species']}**")
+                st.markdown(f"**{item['species']}**")
                 st.caption(f"Customer: {item['cust_size']}  →  Priced as: {item['quote_size']}")
-
-            with ob: st.write(f"S${item['price']}/pc × {item['qty']} = **S${item['line_total']:,.2f}**")
+            with ob_col:
+                st.markdown(
+                    f"S\\${item['price']}/pc &nbsp;×&nbsp; {item['qty']} = &nbsp;**S\\${item['line_total']:,.2f}**",
+                    unsafe_allow_html=True
+                )
             with oc:
                 if st.button("✏️",key=f"eo_{i}"): st.session_state.odd_items.pop(i); st.rerun()
             with od:
@@ -573,7 +632,7 @@ with tab_odd:
                     },
                     "profit_line":f"S${profit:,.2f}","margin_pct":f"{margin_pct}%","small_qty":item["small_qty"]
                 })
-                # Customer reply shows BOTH sizes
+                # Odd size is timber — include length tolerance
                 odd_reply.append(
                     f"{item['species']} timber\n"
                     f"Your size: {item['cust_size']}\n"
@@ -584,7 +643,8 @@ with tab_odd:
             render_staff_log(odd_log,odd_total,odd_cost)
             st.divider()
             st.subheader("Customer Reply (edit before sending)")
-            odd_reply_text=build_reply(odd_reply,odd_total)
+            # Odd size is timber — include length tolerance (is_timber=True)
+            odd_reply_text = build_reply(odd_reply, odd_total, is_timber=True)
             odd_edited=st.text_area("",odd_reply_text,height=300,key="odd_reply_out")
             od1,od2=st.columns(2)
             with od1:
@@ -593,7 +653,10 @@ with tab_odd:
                     mime="text/plain",use_container_width=True)
             with od2:
                 if st.button("💾 Save to History",type="primary",key="save_odd",use_container_width=True):
-                    ok=save_quote(st.session_state.get("cust_name",""),st.session_state.get("cust_mobile",""),odd_total,len(odd_reply),odd_edited,odd_cost)
+                    ok=save_quote(
+                        st.session_state.cust_name,
+                        st.session_state.cust_mobile,
+                        odd_total,len(odd_reply),odd_edited,odd_cost)
                     if ok: st.success("✅ Saved!")
                     else:  st.error("❌ Could not save.")
     else:
@@ -609,7 +672,6 @@ with tab_ply:
         st.subheader("Plywood Prices (SGD/sheet)")
         st.caption("Select a grade to view and edit prices. Cost = Ying Chuan. Selling = your price to customer.")
 
-        # Grade selector buttons
         grade_cols = st.columns(len(PLY_GRADES))
         for i,g in enumerate(PLY_GRADES):
             with grade_cols[i]:
@@ -622,7 +684,6 @@ with tab_ply:
         st.divider()
         sel = st.session_state.sel_grade
 
-        # Price reference — hidden by default, expand to view
         with st.expander(f"📋 {sel} — Price Reference (click to view)", expanded=False):
             if sel in PLY_SELL:
                 tbl_rows = []
@@ -648,7 +709,6 @@ with tab_ply:
 
         st.divider()
         st.subheader("Add Plywood to Order")
-        # Grade persists between adds — stored in session state
         if "ply_cur_grade" not in st.session_state:
             st.session_state.ply_cur_grade = st.session_state.sel_grade
 
@@ -658,14 +718,12 @@ with tab_ply:
             p_grade = st.selectbox("Grade", PLY_GRADES,
                 index=PLY_GRADES.index(st.session_state.ply_cur_grade),
                 key="p_gr_sel")
-            # Update current grade in session
             st.session_state.ply_cur_grade = p_grade
         with pg2:
             avail_thk = sorted(PLY_SELL.get(p_grade, {}).keys())
             p_thk_key = f"p_thk_{p_grade}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
             p_thk = st.selectbox("Thickness (mm)", avail_thk, key=p_thk_key)
 
-        # Always read sell price directly from PLY_SELL — no session cache
         p_sell_def = PLY_SELL.get(p_grade, {}).get(p_thk, 0.0)
         p_cost_def = PLY_COST.get(p_grade, {}).get(p_thk, 0.0)
         note       = PLY_ACTUAL.get(p_grade, {}).get(p_thk, "")
@@ -674,8 +732,6 @@ with tab_ply:
         if note: st.caption(f"ℹ️ {note}")
         if moq > 1: st.caption(f"⚠️ MOQ: minimum {moq} sheets for this item")
 
-        # Single row inside form — Enter key works, grade stays selected
-        # Profit preview uses p_sell_def (before form submit) — no reference error
         profit_preview  = round(p_sell_def - p_cost_def, 2)
         margin_preview  = round((profit_preview / p_sell_def * 100), 1) if p_sell_def > 0 else 0
 
@@ -710,9 +766,32 @@ with tab_ply:
             })
             st.rerun()
 
+        # Clean item list display for plywood
         if st.session_state.ply_items:
+            st.divider()
+            st.markdown("**Items in Order**")
+            for i, item in enumerate(st.session_state.ply_items):
+                col_a, col_b, col_c, col_d = st.columns([3, 3, 1, 1])
+                with col_a:
+                    moq_badge = " ⚠️ MOQ applied" if item["moq_flag"] else ""
+                    st.markdown(f"**{item['grade']}** &nbsp; {item['thk']}mm{moq_badge}", unsafe_allow_html=True)
+                with col_b:
+                    st.markdown(
+                        f"S\\${item['sell']}/sheet &nbsp;×&nbsp; {item['actual_qty']} sheets &nbsp;= &nbsp;"
+                        f"**S\\${item['line_total']:,.2f}**",
+                        unsafe_allow_html=True
+                    )
+                with col_c:
+                    profit_item = round(item['profit_ps'] * item['actual_qty'], 2)
+                    st.caption(f"Profit: S${profit_item:,.2f}")
+                with col_d:
+                    if st.button("🗑️", key=f"dply_{i}"):
+                        st.session_state.ply_items.pop(i)
+                        st.rerun()
+
+            st.divider()
             ply_grand=0; ply_cost_total=0
-            for i,item in enumerate(st.session_state.ply_items):
+            for item in st.session_state.ply_items:
                 ply_grand+=item["line_total"]
                 ply_cost_total+=item["cost"]*item["actual_qty"]
 
@@ -760,8 +839,8 @@ with tab_ply:
                 st.subheader("Customer Reply (edit before sending)")
                 has_fr = any("Fire Retardant" in item["grade"] for item in st.session_state.ply_items)
                 fr_note = "\n  * Plywood may/will be wet & may/will have some powder when dried." if has_fr else ""
-                ply_reply_text=build_reply(ply_reply, ply_grand,
-                    skip_length_tol=has_fr, extra_note=fr_note)
+                # Plywood — NO length tolerance (is_timber=False), always
+                ply_reply_text = build_reply(ply_reply, ply_grand, is_timber=False, extra_note=fr_note)
                 ply_edited=st.text_area("",ply_reply_text,height=300,key="ply_reply_out")
                 pl1,pl2=st.columns(2)
                 with pl1:
@@ -770,7 +849,10 @@ with tab_ply:
                         mime="text/plain",use_container_width=True)
                 with pl2:
                     if st.button("💾 Save to History",type="primary",key="save_ply",use_container_width=True):
-                        ok=save_quote(st.session_state.get("cust_name",""),st.session_state.get("cust_mobile",""),ply_grand,len(ply_reply),ply_edited,ply_cost_total)
+                        ok=save_quote(
+                            st.session_state.cust_name,
+                            st.session_state.cust_mobile,
+                            ply_grand,len(ply_reply),ply_edited,ply_cost_total)
                         if ok: st.success("✅ Saved!")
                         else:  st.error("❌ Could not save.")
         else:
@@ -781,13 +863,11 @@ with tab_ply:
         st.caption("Full sheet size: 4' x 8' (1220mm x 2440mm)")
         FULL_W=1220; FULL_L=2440
 
-        # Refresh button — clears all cut-to-size fields
         if st.button("🔄 Refresh / New Customer", use_container_width=False):
             for k in ["c_gr","c_thk","c_sell","c_w","c_l","c_qty","cut_reply"]:
                 if k in st.session_state: del st.session_state[k]
             st.rerun()
 
-        # Cut-to-size: grade and thk outside form so sell price updates correctly
         cut_col1, cut_col2 = st.columns(2)
         with cut_col1:
             c_grade = st.selectbox("Plywood Grade", PLY_GRADES, key="cut_grade_sel")
@@ -796,7 +876,6 @@ with tab_ply:
             c_thk_key  = f"cut_thk_{c_grade}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
             c_thk      = st.selectbox("Thickness (mm)", c_thk_opts, key=c_thk_key)
 
-        # Sell price key is grade+thk specific — always shows correct default
         c_sell_def = PLY_SELL.get(c_grade, {}).get(c_thk, 0.0)
         c_sell_key = f"cut_sell_{c_grade}_{c_thk}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
 
@@ -817,9 +896,6 @@ with tab_ply:
             sheets=math.ceil(c_qty/pps)
             price_pc=round(c_sell/pps,2)
 
-            # Cutting fee calculation
-            # Each piece needs: (cuts along width - 1) + (cuts along length - 1) cuts per sheet
-            # Total cuts = cuts per sheet x sheets needed
             cuts_per_sheet = (pcs_w - 1) + (pcs_l - 1) if pps > 1 else 0
             total_cuts = cuts_per_sheet * sheets
             cut_fee_per_cut = 2.50
@@ -873,7 +949,7 @@ with tab_ply:
                 f"Cutting fee ({total_cuts} cuts @ S$2.50/cut) = S${total_cut_fee:,.2f}\n"
                 f"Total per pc: S${total_per_pc}"
             )
-            # Cut-to-size reply uses cutting tolerance, not standard length tolerance
+            # Cut-to-size: custom footer with cutting tolerance only (no length tolerance)
             cut_footer = [
                 cut_reply,
                 f"\nTotal : S${total:,.2f}",
@@ -891,7 +967,10 @@ with tab_ply:
                     mime="text/plain",use_container_width=True)
             with cx2:
                 if st.button("💾 Save to History",type="primary",key="save_cut",use_container_width=True):
-                    ok=save_quote(st.session_state.get("cust_name",""),st.session_state.get("cust_mobile",""),total,1,cut_edited,round(cost_pc*c_qty,2))
+                    ok=save_quote(
+                        st.session_state.cust_name,
+                        st.session_state.cust_mobile,
+                        total,1,cut_edited,round(cost_pc*c_qty,2))
                     if ok: st.success("✅ Saved!")
                     else:  st.error("❌ Could not save.")
 
@@ -960,24 +1039,39 @@ with tab_sup:
 # ============================================================
 with tab_hist:
     st.markdown("#### 🕘 Quote History")
-    st.caption("Search by customer name or mobile. Tap any entry to read the full quote.")
-    search=st.text_input("🔍 Search",placeholder="Type customer name or mobile...",key="hist_search")
-    col_ref,_=st.columns([1,4])
-    with col_ref:
-        if st.button("🔄 Refresh",use_container_width=True): st.rerun()
-    with st.spinner("Loading..."):
-        history=load_history()
+    st.caption("Search by customer name or mobile. Press Enter or click Search.")
+
+    with st.form("hist_search_form", clear_on_submit=False):
+        hs1, hs2, hs3 = st.columns([4,1,1])
+        with hs1:
+            search = st.text_input("🔍 Search",
+                placeholder="Type customer name or mobile — press Enter or click Search",
+                key="hist_search_inp", label_visibility="collapsed")
+        with hs2:
+            search_btn = st.form_submit_button("🔍 Search", use_container_width=True, type="primary")
+        with hs3:
+            refresh_btn = st.form_submit_button("🔄 Refresh", use_container_width=True)
+
+    with st.spinner("Loading history from cloud..."):
+        history = load_history()
+
     if not history:
-        st.info("No quotes saved yet.")
+        st.info("No quotes saved yet. Generate a quote and click 'Save to History'.")
     else:
-        filtered=[q for q in history if search.lower() in q.get("customer","").lower() or search.strip() in q.get("mobile","")] if search.strip() else history
+        filtered = [q for q in history
+            if search.lower() in q.get("customer","").lower()
+            or search.strip() in q.get("mobile","")
+        ] if search.strip() else history
+
         h1,h2,h3,h4=st.columns(4)
         with h1: st.metric("Total Quotes",len(history))
         with h2: st.metric("All-time Revenue",f"S${sum(float(q.get('total',0)) for q in history):,.2f}")
         with h3: st.metric("All-time Profit",f"S${sum(float(q.get('profit',0)) for q in history):,.2f}")
         with h4: st.metric("Unique Customers",len(set(q.get("customer","") for q in history if q.get("customer","—")!="—")))
         st.divider()
-        if search.strip(): st.caption(f"{len(filtered)} quote(s) found for '{search}'")
+
+        if search.strip():
+            st.caption(f"{len(filtered)} quote(s) found for '{search}'")
         if not filtered:
             st.info("No quotes match your search.")
         else:
