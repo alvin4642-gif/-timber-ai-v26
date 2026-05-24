@@ -384,12 +384,13 @@ with tab_quote:
         with fc5: f_wu  = st.selectbox("Unit ",  ["mm","inch"], key="f_wu")
         with fc6: f_len = st.number_input("Length",    min_value=None, value=None, placeholder="e.g. 2.4", step=0.1, format="%.1f", key="f_len")
         with fc7: f_lu  = st.selectbox("Unit  ", ["m","ft"], key="f_lu")
-        with fc8: f_qty = st.number_input("Qty", min_value=1, value=1, step=1, key="f_qty")
+        with fc8: f_qty = st.number_input("Qty", min_value=None, value=None, placeholder="e.g. 1", step=1.0, format="%.0f", key="f_qty")
         with fc9:
             st.markdown("<br>", unsafe_allow_html=True)
             add_btn = st.form_submit_button("+ Add", use_container_width=True)
 
         if add_btn and f_thk and f_wid and f_len:
+            f_qty_int = max(int(f_qty) if f_qty is not None else 1, 1)
             thk    = mm_to_inch(f_thk) if f_tu == "mm" else int(f_thk)
             wid    = mm_to_inch(f_wid) if f_wu == "mm" else int(f_wid)
             length = m_to_ft(f_len)    if f_lu == "m"  else int(f_len)
@@ -404,8 +405,8 @@ with tab_quote:
                 size_text = f"{mm_thk}mm x {mm_wid}mm x {length}ft"
             st.session_state.order_items.append({
                 "species": f_sp, "size": size_text, "thk": thk, "wid": wid, "length": length,
-                "price": price, "qty": f_qty, "line_total": round(price * f_qty, 2),
-                "rate": rate, "pcs_per_ton": pcs_per_ton, "small_qty": f_qty < SMALL_QTY
+                "price": price, "qty": f_qty_int, "line_total": round(price * f_qty_int, 2),
+                "rate": rate, "pcs_per_ton": pcs_per_ton, "small_qty": f_qty_int < SMALL_QTY
             })
             st.session_state.q_ready = False  # new item added — reset generated quote
             st.rerun()
@@ -418,11 +419,9 @@ with tab_quote:
             cur_total = round(cur_price * item["qty"], 2)
             col_a, col_b, col_c = st.columns([3, 3, 1])
             with col_a:
-                st.markdown(f"**{item['species']}** &nbsp; {item['size']}", unsafe_allow_html=True)
+                st.write(f"**{item['species']}**  {item['size']}")
             with col_b:
-                st.markdown(
-                    f"S\\${cur_price}/pc &nbsp;×&nbsp; {item['qty']} pcs &nbsp;=&nbsp; **S\\${cur_total:,.2f}**",
-                    unsafe_allow_html=True)
+                st.write(f"S${cur_price}/pc  x  {item['qty']} pcs  =  S${cur_total:,.2f}")
             with col_c:
                 if st.button("🗑️", key=f"dt_{i}"):
                     st.session_state.order_items.pop(i)
