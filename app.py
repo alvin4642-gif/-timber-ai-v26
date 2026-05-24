@@ -150,12 +150,15 @@ def calc(thk,wid,length,rate):
 def is_keruing(species):
     return species in ["Mixed Keruing","Pure Keruing"]
 
-def build_reply(lines,total):
-    out=list(lines)
+def build_reply(lines, total, skip_length_tol=False, extra_note=""):
+    out = list(lines)
     out.append(f"\nTotal : S${total:,.2f}")
     out.append("\nTolerances:")
     out.append("- Thickness/Width: +-1~2mm")
-    out.append("- Length: +-25~50mm")
+    if not skip_length_tol:
+        out.append("- Length: +-25~50mm")
+    if extra_note:
+        out.append(extra_note)
     out.append("\nDelivery / Self Collection:")
     out.append("30 Kranji Loop (Blk A) #04-05")
     out.append("TimMac @ Kranji S739570")
@@ -385,7 +388,6 @@ with tab_quote:
                 label = f"**{item['species']}**  {item['size']}"
                 if edit_idx == i: label += "  ✏️ *editing...*"
                 st.write(label)
-                if item["small_qty"]: st.warning(f"⚠️ Small qty ({item['qty']} pcs)")
             with cb:
                 # Live price using CURRENT rate
                 cur_rate = species_rate[item["species"]]
@@ -555,7 +557,7 @@ with tab_odd:
             with oa:
                 st.write(f"**{item['species']}**")
                 st.caption(f"Customer: {item['cust_size']}  →  Priced as: {item['quote_size']}")
-                if item["small_qty"]: st.warning(f"⚠️ Small qty ({item['qty']} pcs)")
+
             with ob: st.write(f"S${item['price']}/pc × {item['qty']} = **S${item['line_total']:,.2f}**")
             with oc:
                 if st.button("✏️",key=f"eo_{i}"): st.session_state.odd_items.pop(i); st.rerun()
@@ -768,13 +770,16 @@ with tab_ply:
                     })
                     cl=f"{item['grade']} plywood {item['thk']}mm @ S${item['sell']}/sheet x {item['actual_qty']} = S${item['line_total']:,.2f}{moq_note}"
                     if "Fire Retardant" in item['grade']:
-                        cl += "\n  * After treatment plywood may/will be wet & may/will have some powder when dried."
+                        cl += "\n  * Plywood may/will be wet & may/will have some powder when dried."
                     ply_reply.append(cl)
 
                 render_staff_log(ply_log,ply_grand,ply_cost_total)
                 st.divider()
                 st.subheader("Customer Reply (edit before sending)")
-                ply_reply_text=build_reply(ply_reply,ply_grand)
+                has_fr = any("Fire Retardant" in item["grade"] for item in st.session_state.ply_items)
+                fr_note = "\n  * Plywood may/will be wet & may/will have some powder when dried." if has_fr else ""
+                ply_reply_text=build_reply(ply_reply, ply_grand,
+                    skip_length_tol=has_fr, extra_note=fr_note)
                 ply_edited=st.text_area("",ply_reply_text,height=300,key="ply_reply_out")
                 pl1,pl2=st.columns(2)
                 with pl1:
@@ -863,17 +868,18 @@ with tab_ply:
 
             cut_log=[{"heading":f"{c_grade} {c_thk}mm — Cut {int(c_w)}mm x {int(c_l)}mm",
                 "rows":{
-                    "Full sheet":f"{FULL_W}x{FULL_L}mm",
-                    "Pcs per sheet":f"{pps} ({pcs_w}w x {pcs_l}l)",
-                    "Sheets needed":str(sheets),
-                    "Ply price per pc":f"S${price_pc}",
-                    "Cuts per sheet":str(cuts_per_sheet),
-                    "Total cuts":str(total_cuts),
+                    "Full sheet":              f"{FULL_W}x{FULL_L}mm",
+                    "Pricing per full sheet":  f"S${c_sell} (your selling price)",
+                    "Pcs per sheet":           f"{pps} ({pcs_w}w x {pcs_l}l)",
+                    "Sheets needed":           str(sheets),
+                    "Ply price per pc":        f"S${price_pc}",
+                    "Cuts per sheet":          str(cuts_per_sheet),
+                    "Total cuts":              str(total_cuts),
                     "Cutting fee (S$2.50/cut)":f"S${total_cut_fee:,.2f}",
-                    "Cutting fee per pc":f"S${cut_fee_per_pc}",
-                    "Total per pc (ply + cut)":f"S${total_per_pc}",
-                    "Qty":f"{c_qty} pcs",
-                    "Grand total":f"S${total:,.2f}",
+                    "Cutting fee per pc":      f"S${cut_fee_per_pc}",
+                    "Total per pc (ply+cut)":  f"S${total_per_pc}",
+                    "Qty":                     f"{c_qty} pcs",
+                    "Grand total":             f"S${total:,.2f}",
                 },
                 "profit_line":f"S${profit_total:,.2f}","margin_pct":f"{margin}%","small_qty":False}]
             render_staff_log(cut_log,total,round(cost_pc*c_qty,2))
@@ -885,7 +891,16 @@ with tab_ply:
                 f"Cutting fee ({total_cuts} cuts @ S$2.50/cut) = S${total_cut_fee:,.2f}\n"
                 f"Total per pc: S${total_per_pc}"
             )
-            cut_full=build_reply([cut_reply],total)
+            # Cut-to-size reply uses cutting tolerance, not standard length tolerance
+            cut_footer = [
+                cut_reply,
+                f"\nTotal : S${total:,.2f}",
+                "\nCutting Tolerance: +-0.5~1mm",
+                "\nDelivery / Self Collection:",
+                "30 Kranji Loop (Blk A) #04-05",
+                "TimMac @ Kranji S739570"
+            ]
+            cut_full = "\n".join(cut_footer)
             cut_edited=st.text_area("Customer Reply",cut_full,height=260,key="cut_reply")
             cx1,cx2=st.columns(2)
             with cx1:
