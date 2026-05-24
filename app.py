@@ -328,32 +328,22 @@ with tab_quote:
     st.subheader("Add Timber Item")
     st.caption("Rates above can be changed anytime before Generate Quote — price recalculates automatically.")
 
-    # Edit mode — pre-fill form if editing existing item
-    edit_idx  = st.session_state.get("edit_idx", None)
-    edit_item = st.session_state.order_items[edit_idx] if (edit_idx is not None and edit_idx < len(st.session_state.order_items)) else None
-
     with st.form("add_timber_form", clear_on_submit=True):
         fc1,fc2,fc3,fc4,fc5,fc6,fc7,fc8,fc9 = st.columns([2,1,1,1,1,1,1,1,1])
-        with fc1: f_sp  = st.selectbox("Species", SPECIES,
-            index=SPECIES.index(edit_item["species"]) if edit_item else 0, key="f_sp")
-        with fc2: f_thk = st.number_input("Thickness", min_value=None,
-            value=float(inch_to_mm.get(edit_item["thk"], edit_item["thk"])) if edit_item else None,
+        with fc1: f_sp  = st.selectbox("Species", SPECIES, key="f_sp")
+        with fc2: f_thk = st.number_input("Thickness", min_value=None, value=None,
             placeholder="e.g. 20", step=1.0, format="%.1f", key="f_thk")
         with fc3: f_tu  = st.selectbox("Unit",  ["mm","inch"], key="f_tu")
-        with fc4: f_wid = st.number_input("Width", min_value=None,
-            value=float(inch_to_mm.get(edit_item["wid"], edit_item["wid"])) if edit_item else None,
+        with fc4: f_wid = st.number_input("Width", min_value=None, value=None,
             placeholder="e.g. 100", step=1.0, format="%.1f", key="f_wid")
         with fc5: f_wu  = st.selectbox("Unit ", ["mm","inch"], key="f_wu")
-        with fc6: f_len = st.number_input("Length", min_value=None,
-            value=float(edit_item["length"]) if edit_item else None,
+        with fc6: f_len = st.number_input("Length", min_value=None, value=None,
             placeholder="e.g. 2.4", step=0.1, format="%.1f", key="f_len")
-        with fc7: f_lu  = st.selectbox("Unit  ", ["m","ft"],
-            index=1 if edit_item else 0, key="f_lu")
-        with fc8: f_qty = st.number_input("Qty", min_value=1,
-            value=edit_item["qty"] if edit_item else 1, step=1, key="f_qty")
+        with fc7: f_lu  = st.selectbox("Unit  ", ["m","ft"], key="f_lu")
+        with fc8: f_qty = st.number_input("Qty", min_value=1, value=1, step=1, key="f_qty")
         with fc9:
             st.markdown("<br>", unsafe_allow_html=True)
-            add_btn = st.form_submit_button("💾 Update" if edit_item else "+ Add", use_container_width=True)
+            add_btn = st.form_submit_button("+ Add", use_container_width=True)
 
         if add_btn and f_thk and f_wid and f_len:
             thk    = mm_to_inch(f_thk) if f_tu=="mm" else int(f_thk)
@@ -368,26 +358,19 @@ with tab_quote:
                 mm_thk = inch_to_mm.get(thk,round(thk*25.4))
                 mm_wid = inch_to_mm.get(wid,round(wid*25.4))
                 size_text = f"{mm_thk}mm x {mm_wid}mm x {length}ft"
-            new_item = {
+            st.session_state.order_items.append({
                 "species":f_sp,"size":size_text,"thk":thk,"wid":wid,"length":length,
                 "price":price,"qty":f_qty,"line_total":round(price*f_qty,2),
                 "rate":rate,"pcs_per_ton":pcs_per_ton,"small_qty":f_qty<SMALL_QTY
-            }
-            if edit_idx is not None and edit_idx < len(st.session_state.order_items):
-                st.session_state.order_items[edit_idx] = new_item
-                del st.session_state["edit_idx"]
-            else:
-                st.session_state.order_items.append(new_item)
+            })
             st.rerun()
 
-    # Items list — compact, no heading
+    # Items list — compact, same layout as plywood (no edit button)
     if st.session_state.order_items:
         for i,item in enumerate(st.session_state.order_items):
-            ca,cb,cc,cd = st.columns([3,2,1,1])
+            ca,cb,cc = st.columns([3,2,1])
             with ca:
-                label = f"**{item['species']}**  {item['size']}"
-                if edit_idx == i: label += "  ✏️ *editing...*"
-                st.write(label)
+                st.write(f"**{item['species']}**  {item['size']}")
             with cb:
                 # Live price using CURRENT rate
                 cur_rate = species_rate[item["species"]]
@@ -395,12 +378,8 @@ with tab_quote:
                 cur_total = round(cur_price*item["qty"],2)
                 st.write(f"S${cur_price}/pc × {item['qty']} = **S${cur_total:,.2f}**")
             with cc:
-                if st.button("✏️",key=f"et_{i}"):
-                    st.session_state["edit_idx"]=i; st.rerun()
-            with cd:
                 if st.button("🗑️",key=f"dt_{i}"):
                     st.session_state.order_items.pop(i)
-                    if "edit_idx" in st.session_state: del st.session_state["edit_idx"]
                     st.rerun()
 
         st.divider()
@@ -457,7 +436,10 @@ with tab_quote:
                     mime="text/plain",use_container_width=True)
             with a2:
                 if st.button("💾 Save to History",type="primary",use_container_width=True):
-                    ok=save_quote(cust_name,cust_mobile,grand_total,len(customer_reply),edited_reply,cost_total)
+                    ok=save_quote(
+                        st.session_state.get("cust_name",""),
+                        st.session_state.get("cust_mobile",""),
+                        grand_total,len(customer_reply),edited_reply,cost_total)
                     if ok: st.success("✅ Saved!")
                     else:  st.error("❌ Could not save.")
             with a3:
