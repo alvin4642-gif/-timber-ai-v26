@@ -338,23 +338,21 @@ def render_staff_log(log_items, grand_total, cost_total):
     margin = round((profit / grand_total * 100), 1) if grand_total > 0 else 0
     html = '<div class="staff-log"><div class="staff-log-header">Staff Calculation Log</div>'
     for i, item in enumerate(log_items, 1):
-        warn     = '<span class="warn-chip">⚠️ SMALL QTY — adjust price before sending</span>' if item.get("small_qty") else ""
-        html += f'''
-        <div class="log-item">
-          <div class="log-item-head"><span class="log-num">{i}</span>{item["heading"]}</div>
-          <div class="log-grid">
-            {"".join(f'<span class="log-label">{k}</span><span class="log-val">{v}</span>' for k, v in item["rows"].items())}
-            <span class="log-label">Profit</span>
-            <span class="log-profit">{item.get("profit_line","")} <span class="profit-chip">{item.get("margin_pct","")}</span>{warn}</span>
-          </div>
-          {"".join([f'<div style="background:#FAEEDA;color:#854F0B;font-size:13px;font-weight:600;padding:4px 12px;border-radius:6px;margin-top:4px">⚠️ MOQ APPLIED — {item.get("moq_note","")}</div>']) if item.get("moq_flag") else ""}
-        </div>'''
-    html += f'''
-    <div class="log-total">
-      <div class="log-total-label">Grand total &nbsp;·&nbsp; {len(log_items)} item(s) &nbsp;·&nbsp; Margin {margin}%</div>
-      <div><span class="log-total-val">S${grand_total:,.2f}</span>
-           <span class="profit-chip">Profit S${profit:,.2f}</span></div>
-    </div></div>'''
+        warn = '<span class="warn-chip">&#9888;&#65039; SMALL QTY &mdash; adjust price before sending</span>' if item.get("small_qty") else ""
+        grid = "".join(f'<span class="log-label">{k}</span><span class="log-val">{v}</span>' for k, v in item["rows"].items())
+        moq_div = f'<div style="background:#FAEEDA;color:#854F0B;font-size:13px;font-weight:600;padding:4px 12px;border-radius:6px;margin-top:4px">&#9888;&#65039; MOQ APPLIED &mdash; {item.get("moq_note","")}</div>' if item.get("moq_flag") else ""
+        html += '<div class="log-item">'
+        html += f'<div class="log-item-head"><span class="log-num">{i}</span>{item["heading"]}</div>'
+        html += f'<div class="log-grid">{grid}'
+        html += f'<span class="log-label">Profit</span>'
+        html += f'<span class="log-profit">{item.get("profit_line","")} <span class="profit-chip">{item.get("margin_pct","")}</span>{warn}</span>'
+        html += '</div>'
+        html += moq_div
+        html += '</div>'
+    html += '<div class="log-total">'
+    html += f'<div class="log-total-label">Grand total &nbsp;&middot;&nbsp; {len(log_items)} item(s) &nbsp;&middot;&nbsp; Margin {margin}%</div>'
+    html += f'<div><span class="log-total-val">S${grand_total:,.2f}</span> <span class="profit-chip">Profit S${profit:,.2f}</span></div>'
+    html += '</div></div>'
     st.markdown(html, unsafe_allow_html=True)
 
 # ============================================================
@@ -1054,10 +1052,14 @@ with tab_hist:
     st.markdown("#### 🕘 Quote History")
     st.caption("Search by customer name or mobile. Press Enter or click Search.")
 
+    if "hist_search_val" not in st.session_state:
+        st.session_state.hist_search_val = ""
+
     with st.form("hist_search_form", clear_on_submit=False):
         hs1, hs2, hs3 = st.columns([4, 1, 1])
         with hs1:
             search = st.text_input("🔍 Search",
+                value=st.session_state.hist_search_val,
                 placeholder="Type customer name or mobile — press Enter or click Search",
                 key="hist_search_inp", label_visibility="collapsed")
         with hs2:
@@ -1065,16 +1067,23 @@ with tab_hist:
         with hs3:
             refresh_btn = st.form_submit_button("🔄 Refresh", use_container_width=True)
 
+    if refresh_btn:
+        st.session_state.hist_search_val = ""
+        st.rerun()
+    elif search_btn:
+        st.session_state.hist_search_val = search
+
     with st.spinner("Loading history from cloud..."):
         history = load_history()
 
     if not history:
         st.info("No quotes saved yet. Generate a quote and click 'Save to History'.")
     else:
+        active_search = st.session_state.hist_search_val.strip()
         filtered = [q for q in history
-            if search.lower() in q.get("customer", "").lower()
-            or search.strip() in q.get("mobile", "")
-        ] if search.strip() else history
+            if active_search.lower() in q.get("customer", "").lower()
+            or active_search in q.get("mobile", "")
+        ] if active_search else history
 
         h1, h2, h3, h4 = st.columns(4)
         with h1: st.metric("Total Quotes",      len(history))
@@ -1083,8 +1092,8 @@ with tab_hist:
         with h4: st.metric("Unique Customers",  len(set(q.get("customer","") for q in history if q.get("customer","—") != "—")))
         st.divider()
 
-        if search.strip():
-            st.caption(f"{len(filtered)} quote(s) found for '{search}'")
+        if active_search:
+            st.caption(f"{len(filtered)} quote(s) found for '{active_search}'")
         if not filtered:
             st.info("No quotes match your search.")
         else:
@@ -1095,7 +1104,7 @@ with tab_hist:
                 profit = float(q.get("profit", 0))
                 margin = float(q.get("margin", 0))
                 text   = q.get("text", ""); qid = q.get("id", str(i))
-                label  = f"📄  {date} {time}  ·  {name}  ·  {mobile}  ·  S${total:,.2f}  ·  Profit S${profit:,.2f} ({margin}%)"
+                label  = f"📄  {date} {time}  ·  {name}  ·  {mobile}  ·  SGD {total:,.2f}  ·  Profit SGD {profit:,.2f}  ({margin}%)"
                 with st.expander(label):
                     st.text_area("Full quote", value=text, height=300, key=f"qt_{i}")
                     hb1, hb2 = st.columns(2)
