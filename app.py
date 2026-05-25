@@ -119,7 +119,7 @@ def save_history(history):
         st.error(f"❌ Network error: {str(e)}")
         return False
 
-def save_quote(customer, mobile, total, items, quote_text, cost_total=0):
+def save_quote(customer, mobile, total, items, quote_text, cost_total=0, quote_type="Quote"):
     history = load_history()
     profit  = round(total - cost_total, 2)
     margin  = round((profit / total * 100), 1) if total > 0 else 0
@@ -129,6 +129,7 @@ def save_quote(customer, mobile, total, items, quote_text, cost_total=0):
         "time":     datetime.now().strftime("%H:%M"),
         "customer": customer.strip() if customer.strip() else "—",
         "mobile":   mobile.strip()   if mobile.strip()   else "—",
+        "type":     quote_type,
         "items": items, "total": total, "cost": cost_total,
         "profit": profit, "margin": margin, "text": quote_text
     }
@@ -511,7 +512,21 @@ with tab_quote:
 # ============================================================
 with tab_odd:
     st.subheader("📐 Odd Size Timber")
-    st.caption("Customer requests non-standard size. Price calculated on your quote size. Customer reply shows their requested size.")
+    st.caption("Enter customer requested size AND your actual supply size. Pricing uses exact mm dimensions — no rounding to standard sizes.")
+
+    st.markdown("#### Customer Details")
+    od_cd1, od_cd2 = st.columns(2)
+    with od_cd1:
+        odd_cust_name = st.text_input("Customer Name / Company",
+            value=st.session_state.cust_name,
+            placeholder="e.g. ABC Construction Pte Ltd", key="odd_cust_name_inp")
+        st.session_state.cust_name = odd_cust_name
+    with od_cd2:
+        odd_cust_mobile = st.text_input("Mobile Number",
+            value=st.session_state.cust_mobile,
+            placeholder="e.g. 9123 4567", key="odd_cust_mobile_inp")
+        st.session_state.cust_mobile = odd_cust_mobile
+    st.divider()
 
     st.markdown("**Species, Rate & Quantity**")
     os1, os2, os3 = st.columns([2, 2, 1])
@@ -547,18 +562,29 @@ with tab_odd:
             if cthk and cwid and clen and qthk and qwid and qlen:
                 ctu = st.session_state.odd_ctu; cwu = st.session_state.odd_cwu; clu = st.session_state.odd_clu
                 qtu = st.session_state.odd_qtu; qwu = st.session_state.odd_qwu; qlu = st.session_state.odd_qlu
+                # Customer size display string
                 cust_size = f'{cthk}" x {cwid}" x {clen}{"ft" if clu=="ft" else "m"}' if ctu=="inch" else f"{cthk}mm x {cwid}mm x {clen}{clu}"
-                q_thk    = mm_to_inch(qthk) if qtu == "mm" else int(qthk)
-                q_wid    = mm_to_inch(qwid) if qwu == "mm" else int(qwid)
-                q_length = m_to_ft(qlen)    if qlu == "m"  else int(qlen)
-                if q_length == 19: q_length = 20
+
+                # Quote size: convert to inches/ft for formula but keep EXACT mm values
+                # — no rounding to standard inch sizes so ex-stock / Malaysia sizes price correctly
                 if qtu == "inch":
-                    quote_size = f'{qthk}" x {qwid}" x {q_length}ft'
+                    q_thk_in = float(qthk)
+                    q_wid_in = float(qwid)
+                    quote_size = f'{qthk}" x {qwid}" x '
                 else:
-                    mm_qthk = inch_to_mm.get(q_thk, round(q_thk * 25.4))
-                    mm_qwid = inch_to_mm.get(q_wid, round(q_wid * 25.4))
-                    quote_size = f"{mm_qthk}mm x {mm_qwid}mm x {q_length}ft"
-                raw = 7200 / (q_thk * q_wid * q_length)
+                    q_thk_in = float(qthk) / 25.4   # exact mm → inches, no snap
+                    q_wid_in = float(qwid) / 25.4
+                    quote_size = f"{qthk}mm x {qwid}mm x "
+
+                if qlu == "m":
+                    q_length_ft = qlen * 3.28084     # exact metres → ft, no snap
+                    quote_size += f"{qlen}m"
+                else:
+                    q_length_ft = float(qlen)
+                    quote_size += f"{qlen}ft"
+
+                # Price using exact dimensions (ton formula in inch×inch×ft)
+                raw = 7200 / (q_thk_in * q_wid_in * q_length_ft)
                 pcs_per_ton = round(raw, 4)
                 pcs_floor   = max(math.floor(raw), 1)
                 price       = round(odd_rate / pcs_floor)
@@ -665,7 +691,8 @@ with tab_odd:
                 if st.button("💾 Save to History", type="primary", key="save_odd", use_container_width=True):
                     ok = save_quote(
                         st.session_state.cust_name, st.session_state.cust_mobile,
-                        odd_total, st.session_state.odd_nitem, odd_edited, odd_cost)
+                        odd_total, st.session_state.odd_nitem, odd_edited, odd_cost,
+                        quote_type="Odd Size")
                     if ok: st.success("✅ Saved!")
                     else:  st.error("❌ Could not save.")
     else:
@@ -1103,7 +1130,9 @@ with tab_hist:
                 profit = float(q.get("profit", 0))
                 margin = float(q.get("margin", 0))
                 text   = q.get("text", ""); qid = q.get("id", str(i))
-                label  = f"📄  {date} {time}  ·  {name}  ·  {mobile}  ·  SGD {total:,.2f}  ·  Profit SGD {profit:,.2f}  ({margin}%)"
+                qtype  = q.get("type", "Quote")
+                type_icon = "📐" if qtype == "Odd Size" else "📄"
+                label  = f"{type_icon} [{qtype}]  {date} {time}  ·  {name}  ·  {mobile}  ·  SGD {total:,.2f}  ·  Profit SGD {profit:,.2f}  ({margin}%)"
                 with st.expander(label):
                     st.text_area("Full quote", value=text, height=300, key=f"qt_{i}")
                     hb1, hb2 = st.columns(2)
