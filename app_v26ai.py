@@ -1181,16 +1181,19 @@ def parse_smart_text(text):
         if dim:
             cur_thk = float(dim.group(1))
             cur_wid = float(dim.group(2))
-        lq = re.search(r"(\d{3,5})\s*[=:]\s*(\d+)", line)
-        if lq and cur_thk and cur_wid:
-            length_mm = float(lq.group(1))
-            qty = int(lq.group(2))
-            results.append({
-                "species": cur_sp or "Kapur",
-                "thk_mm": cur_thk, "wid_mm": cur_wid,
-                "len_m": round(length_mm/1000, 2), "qty": qty,
-                "source": "smart"
-            })
+        # findall captures ALL length=qty pairs on the same line
+        # e.g. "2400=36支  1500=16支  1800=232支" → 3 rows, not 1
+        lq_all = re.findall(r"(\d{3,5})\s*[=:]\s*(\d+)", line)
+        if lq_all and cur_thk and cur_wid:
+            for length_str, qty_str in lq_all:
+                length_mm = float(length_str)
+                if length_mm < 100: continue  # skip if not a valid length
+                results.append({
+                    "species": cur_sp or "Kapur",
+                    "thk_mm": cur_thk, "wid_mm": cur_wid,
+                    "len_m": round(length_mm/1000, 2), "qty": int(qty_str),
+                    "source": "smart"
+                })
             continue
         parts = re.split(r"[\s,\t]+", line)
         if len(parts) >= 5:
