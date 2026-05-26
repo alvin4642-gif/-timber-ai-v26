@@ -1,5 +1,5 @@
 # ============================================================
-# Timber AI Assistant V26 — Full Enhanced Build
+# Timber AI Assistant V26-AI — Full Build with AI Quote Parser
 # ============================================================
 
 import streamlit as st
@@ -9,7 +9,7 @@ import json
 import requests
 from datetime import datetime
 
-st.set_page_config(layout="wide", page_title="Timber AI Assistant V26", page_icon="🪵")
+st.set_page_config(layout="wide", page_title="Timber AI Assistant V26-AI", page_icon="🪵")
 
 # ============================================================
 # CSS
@@ -301,8 +301,8 @@ def reset_all():
 # ============================================================
 st.markdown("""
 <div class="app-header">
-  <div class="app-header-title">🪵 Timber AI Assistant</div>
-  <div class="app-header-sub">Professional Quoting System &nbsp;·&nbsp; Prices in SGD</div>
+  <div class="app-header-title">🪵 Timber AI Assistant <span style="background:#1D9E75;color:white;font-size:13px;padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle">AI</span></div>
+  <div class="app-header-sub">Professional Quoting System &nbsp;·&nbsp; Prices in SGD &nbsp;·&nbsp; AI-Powered Quote Parser</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -328,7 +328,7 @@ st.divider()
 # ============================================================
 tab_quote, tab_odd, tab_ply, tab_sup, tab_hist, tab_ai = st.tabs([
     "📋 Quote Builder", "📐 Odd Size", "🪵 Plywood",
-    "🏭 Suppliers", "🕘 History", "🤖 AI (soon)"
+    "🏭 Suppliers", "🕘 History", "🤖 AI Parser"
 ])
 
 # ============================================================
@@ -1145,14 +1145,410 @@ with tab_hist:
                             delete_quote(qid); st.success("Deleted."); st.rerun()
 
 # ============================================================
-# TAB 6 — AI
+# PARSER FUNCTIONS
+# ============================================================
+SPECIES_MAP = {
+    "chengal":"Chengal","chengai":"Chengal","chenggal":"Chengal",
+    "kapur":"Kapur","kapor":"Kapur",
+    "balau":"Balau","balu":"Balau",
+    "keruing":"Mixed Keruing","mixed keruing":"Mixed Keruing",
+    "pure keruing":"Pure Keruing",
+    "坡楼":"Chengal","柚木":"Chengal","重坡楼":"Chengal",
+    "山樟":"Kapur","樟木":"Kapur","卡布":"Kapur",
+    "芭劳":"Balau","巴劳":"Balau","八劳":"Balau",
+    "克鲁英":"Mixed Keruing","苦楝":"Mixed Keruing","克鲁":"Mixed Keruing",
+}
+
+def detect_species(text):
+    t = text.lower().strip()
+    for k,v in SPECIES_MAP.items():
+        if k in t: return v
+    return None
+
+def normalize_to_mm(value, unit):
+    u = (unit or "").lower().strip()
+    if u in ["mm","毫米",""]:  return float(value)
+    if u in ["cm","厘米"]:      return float(value)*10
+    if u in ["m","米"]:         return float(value)*1000
+    if u in ["ft","feet","'"]:  return float(value)*304.8
+    if u in ["in","inch",'"']: return float(value)*25.4
+    return float(value)
+
+def classify_dim(val_mm):
+    if val_mm >= 500: return "length"
+    if val_mm >= 80:  return "width"
+    return "thickness"
+
+def extract_qty(text):
+    import re
+    patterns = [
+        r"(?:qty|quantity)\s*[:\-]?\s*(\d+)",
+        r"(\d+)\s*(?:pcs|pieces|pc|支|条|块|根)",
+        r"(?:pcs|pieces|pc|支|条|块|根)\s*[:\-]?\s*(\d+)",
+        r"[xX×]\s*(\d+)\s*$",
+    ]
+    for p in patterns:
+        m = re.search(p, text, re.IGNORECASE)
+        if m: return int(m.group(1))
+    return None
+
+def parse_smart_text(text):
+    import re
+    results = []
+    lines = text.strip().split("\n")
+    cur_sp  = None
+    cur_thk = None
+    cur_wid = None
+
+    # Pre-pass: pick up species from header line
+    for line in lines:
+        sp = detect_species(line)
+        if sp: cur_sp = sp; break
+
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        i += 1
+        if not line: continue
+
+        sp = detect_species(line)
+        if sp: cur_sp = sp
+
+        # Strategy 1: shorthand — species thk wid len qty
+        parts = re.split(r"[\s,\t]+", line)
+        if len(parts) >= 5 and detect_species(parts[0]):
+            try:
+                sp2 = detect_species(parts[0])
+                thk=float(parts[1]); wid=float(parts[2])
+                lm=float(parts[3]); qty=int(float(parts[4]))
+                results.append({"species":sp2,"thk_mm":thk,"wid_mm":wid,
+                    "len_m":lm,"qty":qty})
+                cur_sp=sp2; cur_thk=thk; cur_wid=wid
+                continue
+            except: pass
+
+        # Strategy 2: labeled dims (1080mm L x 300mm W x 70mm H)
+        labeled_pat = r"(\d+\.?\d*)\s*(mm|cm|m|ft|in)?\s*[xX×]?\s*([LWHTDlwhtd])\b"
+        labeled_matches = re.findall(labeled_pat, line)
+        if len(labeled_matches) >= 2:
+            dims = {}
+            for val, unit, label in labeled_matches:
+                vmm = normalize_to_mm(val, unit or "mm")
+                lb = label.upper()
+                if lb=="L": dims["length_mm"]=vmm
+                elif lb=="W": dims["width_mm"]=vmm
+                elif lb in ["H","T","D"]: dims["thk_mm"]=vmm
+            if "length_mm" in dims and "width_mm" in dims:
+                dims.setdefault("thk_mm", min(dims["width_mm"], 100))
+                sp_use = detect_species(line) or cur_sp or "Kapur"
+                qty = extract_qty(line)
+                if not qty and i < len(lines):
+                    qty = extract_qty(lines[i].strip()) or 1
+                    if qty > 1: i += 1
+                results.append({"species":sp_use,
+                    "thk_mm":dims["thk_mm"],"wid_mm":dims["width_mm"],
+                    "len_m":round(dims["length_mm"]/1000,3),"qty":qty})
+                cur_thk=dims["thk_mm"]; cur_wid=dims["width_mm"]
+                continue
+
+        # Strategy 3: length=qty pairs (inherited thk/wid)
+        lq_all = re.findall(r"(\d{3,5})\s*[=:]\s*(\d+)\s*(?:支|条|块|pcs|pc|pieces)?", line)
+        if lq_all and cur_thk and cur_wid:
+            sp_use = detect_species(line) or cur_sp or "Kapur"
+            added = 0
+            for lstr, qstr in lq_all:
+                lmm = float(lstr)
+                if lmm < 200: continue
+                results.append({"species":sp_use,"thk_mm":cur_thk,"wid_mm":cur_wid,
+                    "len_m":round(lmm/1000,3),"qty":int(qstr)})
+                added += 1
+            if added: continue
+
+        # Strategy 4: two dims only (35x80) — set context, wait for length
+        two_pat = r"^[^=:\d]*(\d+\.?\d*)\s*(mm|cm)?\s*[xX×]\s*(\d+\.?\d*)\s*(mm|cm)?[^=:\d]*$"
+        two_m = re.match(two_pat, line)
+        if two_m:
+            v1 = normalize_to_mm(two_m.group(1), two_m.group(2) or "mm")
+            v2 = normalize_to_mm(two_m.group(3), two_m.group(4) or "mm")
+            cur_thk=min(v1,v2); cur_wid=max(v1,v2)
+            continue
+
+        # Strategy 5: three dims inline (auto-classify by size)
+        three_pat = r"(\d+\.?\d*)\s*(mm|cm|m|ft)?\s*[xX×]\s*(\d+\.?\d*)\s*(mm|cm|m|ft)?\s*[xX×]\s*(\d+\.?\d*)\s*(mm|cm|m|ft)?"
+        three_m = re.search(three_pat, line)
+        if three_m:
+            vals_mm = [
+                normalize_to_mm(three_m.group(1), three_m.group(2) or "mm"),
+                normalize_to_mm(three_m.group(3), three_m.group(4) or "mm"),
+                normalize_to_mm(three_m.group(5), three_m.group(6) or "mm"),
+            ]
+            sv = sorted(zip(vals_mm,[classify_dim(v) for v in vals_mm]), key=lambda x:-x[0])
+            length_mm = next((v for v,c in sv if c=="length"), sv[0][0])
+            width_mm  = next((v for v,c in sv if c=="width"),  sv[1][0])
+            thk_mm    = next((v for v,c in sv if c=="thickness"), sv[2][0])
+            sp_use = detect_species(line) or cur_sp or "Kapur"
+            qty = extract_qty(line) or 1
+            results.append({"species":sp_use,"thk_mm":thk_mm,"wid_mm":width_mm,
+                "len_m":round(length_mm/1000,3),"qty":qty})
+            cur_thk=thk_mm; cur_wid=width_mm
+            continue
+
+        # Strategy 6: Chinese meter notation (35×80 2.4米 36支)
+        ch_m = re.search(r"(\d+\.?\d*)[×xX](\d+\.?\d*)\s+(\d+\.?\d*)米\s*(\d+)支", line)
+        if ch_m:
+            sp_use = detect_species(line) or cur_sp or "Kapur"
+            t=float(ch_m.group(1)); w=float(ch_m.group(2))
+            lm=float(ch_m.group(3)); qty=int(ch_m.group(4))
+            results.append({"species":sp_use,"thk_mm":min(t,w),"wid_mm":max(t,w),
+                "len_m":lm,"qty":qty})
+            cur_thk=min(t,w); cur_wid=max(t,w)
+            continue
+
+        # Strategy 7: standalone qty — update last item if it has default qty=1
+        qty_only = extract_qty(line)
+        if qty_only and results and results[-1].get("qty") == 1:
+            results[-1]["qty"] = qty_only
+
+    return results
+
+def parsed_to_order_item(p, species_rate_map, inch_to_mm_map):
+    thk = p["thk_mm"]; wid = p["wid_mm"]; length_m = p["len_m"]
+    qty = p["qty"]; sp = p["species"]
+    thk_in = thk / 25.4
+    wid_in = wid / 25.4
+    len_ft = length_m * 3.28084
+    raw = 7200 / (thk_in * wid_in * len_ft)
+    pcs_floor = max(math.floor(raw), 1)
+    rate = species_rate_map.get(sp, 3800)
+    price = round(rate / pcs_floor, 2)
+    size_text = f"{thk}mm x {wid}mm x {length_m}m"
+    return {
+        "species": sp, "size": size_text,
+        "thk": thk_in, "wid": wid_in, "length": round(len_ft, 2),
+        "thk_mm": thk, "wid_mm": wid, "len_m": length_m,
+        "price": price, "qty": qty,
+        "line_total": round(price * qty, 2),
+        "rate": rate,
+        "pcs_per_ton": round(raw, 3),
+        "small_qty": qty < SMALL_QTY
+    }
+
+def parsed_to_odd_item(p, species_rate_map):
+    thk = p["thk_mm"]; wid = p["wid_mm"]; length_m = p["len_m"]
+    qty = p["qty"]; sp = p["species"]
+    thk_in = thk / 25.4; wid_in = wid / 25.4; len_ft = length_m * 3.28084
+    raw = 7200 / (thk_in * wid_in * len_ft)
+    pcs_floor = max(math.floor(raw), 1)
+    rate = species_rate_map.get(sp, 3800)
+    price = round(rate / pcs_floor)
+    cust_size = f"{thk}mm x {wid}mm x {length_m}m"
+    return {
+        "species": sp, "cust_size": cust_size, "quote_size": cust_size,
+        "price": price, "qty": qty,
+        "line_total": round(price * qty, 2),
+        "rate": rate,
+        "pcs_per_ton": round(raw, 4), "pcs_floor": pcs_floor,
+        "small_qty": qty < SMALL_QTY
+    }
+
+# ============================================================
+# TAB 6 — AI PARSER
 # ============================================================
 with tab_ai:
-    st.markdown("#### 🤖 AI Assistant")
-    st.info("**Coming soon** — once your Anthropic API key is ready.\n\nYou'll be able to describe what a customer needs in plain language and AI will fill in the order form automatically.")
+    st.markdown("#### 🤖 AI Quote Parser")
+    st.caption("Paste WhatsApp text, typed lists, or Chinese order notes. Parser reads any format instantly — no API key needed.")
+
+    # Init parser session state
+    if "ai_parsed" not in st.session_state:  st.session_state.ai_parsed = []
+    if "ai_input"  not in st.session_state:  st.session_state.ai_input  = ""
+    if "ai_ran"    not in st.session_state:  st.session_state.ai_ran    = False
+
+    # ── Input mode tabs
+    ai_t1, ai_t2 = st.tabs(["📋 Paste Text / WhatsApp", "⌨️ Shorthand Entry"])
+
+    with ai_t1:
+        st.markdown("**Paste any format below** — WhatsApp message, Chinese list, email snippet")
+        st.markdown("""<div style="background:#f0faf5;border-left:3px solid #1D9E75;padding:8px 14px;border-radius:6px;font-size:12px;color:#555;margin-bottom:8px">
+        <b>Supported formats:</b><br>
+        • <code>Chengal 35x80 &nbsp; 2400=36支 &nbsp; 1500=16支</code> &nbsp;— photo/WhatsApp format<br>
+        • <code>chengal 1080mm L x 300mm W x 70mm H</code> &nbsp;— labeled dimensions<br>
+        • <code>chengal 35x80x2400 &nbsp; 50pcs</code> &nbsp;— 3 dims inline<br>
+        • <code>坡楼 35×160 &nbsp; 4000=2条 &nbsp; 5200=1条</code> &nbsp;— Chinese<br>
+        • <code>坡楼 35×80 2.4米 36支</code> &nbsp;— Chinese with metre<br>
+        • Mixed Chinese/English, multiple sizes &amp; lengths in one paste
+        </div>""", unsafe_allow_html=True)
+
+        paste_text = st.text_area(
+            "Paste order here",
+            value=st.session_state.ai_input,
+            height=200,
+            placeholder="e.g. Chengal 35x80 / 2400=36支 / 1500=16支",
+            key="ai_paste_inp",
+            label_visibility="collapsed"
+        )
+        p1, p2 = st.columns([1,1])
+        with p1:
+            parse_btn = st.button("🔍 Parse Order", type="primary", use_container_width=True, key="parse_paste_btn")
+        with p2:
+            if st.button("🗑️ Clear", use_container_width=True, key="clear_paste_btn"):
+                st.session_state.ai_input  = ""
+                st.session_state.ai_parsed = []
+                st.session_state.ai_ran    = False
+                st.rerun()
+
+        if parse_btn and paste_text.strip():
+            st.session_state.ai_input  = paste_text
+            st.session_state.ai_parsed = parse_smart_text(paste_text)
+            st.session_state.ai_ran    = True
+            st.rerun()
+
+    with ai_t2:
+        st.markdown("**One item per line:** `Species  Thickness  Width  Length(m)  Qty`")
+        st.markdown("""<div style="background:#f0faf5;border-left:3px solid #1D9E75;padding:8px 14px;border-radius:6px;font-size:12px;color:#555;margin-bottom:8px">
+        <b>Example:</b><br>
+        <code>chengal &nbsp; 35 &nbsp; 80 &nbsp; 2.4 &nbsp; 36</code><br>
+        <code>chengal &nbsp; 35 &nbsp; 80 &nbsp; 1.5 &nbsp; 16</code><br>
+        <code>kapur &nbsp;&nbsp;&nbsp; 43 &nbsp; 93 &nbsp; 3.0 &nbsp; 50</code><br>
+        <code>balau &nbsp;&nbsp;&nbsp; 70 &nbsp; 143 &nbsp; 4.8 &nbsp; 20</code><br><br>
+        Species: chengal / kapur / balau / keruing / pure keruing
+        </div>""", unsafe_allow_html=True)
+
+        shorthand_text = st.text_area(
+            "Shorthand entry",
+            height=180,
+            placeholder="chengal 35 80 2.4 36 / chengal 35 80 1.5 16 / kapur 43 93 3.0 50",
+            key="ai_shorthand_inp",
+            label_visibility="collapsed"
+        )
+        sh1, sh2 = st.columns([1,1])
+        with sh1:
+            sh_parse_btn = st.button("🔍 Parse Shorthand", type="primary", use_container_width=True, key="parse_sh_btn")
+        with sh2:
+            if st.button("🗑️ Clear", use_container_width=True, key="clear_sh_btn"):
+                st.session_state.ai_parsed = []
+                st.session_state.ai_ran    = False
+                st.rerun()
+
+        if sh_parse_btn and shorthand_text.strip():
+            st.session_state.ai_parsed = parse_smart_text(shorthand_text)
+            st.session_state.ai_ran    = True
+            st.rerun()
+
+    # ── Results table
+    if st.session_state.ai_ran:
+        parsed = st.session_state.ai_parsed
+        st.divider()
+
+        if not parsed:
+            st.warning("⚠️ Could not read any items. Check format and try again.")
+            st.markdown("""**Tips:**
+- Make sure species name is on its own line or before the dimensions
+- Dimensions must have x between them: `35x80` or `35 x 80`
+- Length=Qty format: `2400=36` or `2400=36支`
+- Shorthand: `chengal 35 80 2.4 36` (5 values separated by spaces)""")
+        else:
+            st.success(f"✅ {len(parsed)} item(s) detected — review before sending to quote tab")
+
+            # Editable preview table
+            st.markdown("**Review & Edit (click any field to correct)**")
+
+            edited = []
+            hdr = st.columns([2,1,1,1,1,1])
+            hdr[0].markdown("**Species**")
+            hdr[1].markdown("**Thk (mm)**")
+            hdr[2].markdown("**Wid (mm)**")
+            hdr[3].markdown("**Len (m)**")
+            hdr[4].markdown("**Qty**")
+            hdr[5].markdown("**Price/pc**")
+
+            for i, item in enumerate(parsed):
+                rate = species_rate.get(item["species"], 3800)
+                thk_in = item["thk_mm"] / 25.4
+                wid_in = item["wid_mm"] / 25.4
+                len_ft = item["len_m"] * 3.28084
+                raw = 7200 / (thk_in * wid_in * len_ft)
+                pcs_f = max(math.floor(raw), 1)
+                price_preview = round(rate / pcs_f, 2)
+
+                c0,c1,c2,c3,c4,c5 = st.columns([2,1,1,1,1,1])
+                with c0:
+                    sp_e = st.selectbox("", SPECIES,
+                        index=SPECIES.index(item["species"]) if item["species"] in SPECIES else 0,
+                        key=f"ai_sp_{i}", label_visibility="collapsed")
+                with c1:
+                    thk_e = st.number_input("", value=float(item["thk_mm"]),
+                        step=0.5, format="%.1f", key=f"ai_thk_{i}", label_visibility="collapsed")
+                with c2:
+                    wid_e = st.number_input("", value=float(item["wid_mm"]),
+                        step=0.5, format="%.1f", key=f"ai_wid_{i}", label_visibility="collapsed")
+                with c3:
+                    len_e = st.number_input("", value=float(item["len_m"]),
+                        step=0.1, format="%.2f", key=f"ai_len_{i}", label_visibility="collapsed")
+                with c4:
+                    qty_e = st.number_input("", value=int(item["qty"]),
+                        min_value=1, step=1, key=f"ai_qty_{i}", label_visibility="collapsed")
+                with c5:
+                    st.markdown(f"<div style='padding-top:8px;font-size:13px;color:#0F6E56;font-weight:600'>S${price_preview}</div>",
+                        unsafe_allow_html=True)
+
+                edited.append({
+                    "species": sp_e, "thk_mm": thk_e, "wid_mm": wid_e,
+                    "len_m": len_e, "qty": qty_e
+                })
+
+            st.divider()
+            # Subtotal preview
+            sub_total = 0
+            for e in edited:
+                r = species_rate.get(e["species"], 3800)
+                ti = e["thk_mm"]/25.4; wi = e["wid_mm"]/25.4; lf = e["len_m"]*3.28084
+                raw2 = 7200/(ti*wi*lf)
+                pf = max(math.floor(raw2),1)
+                sub_total += round(r/pf, 2) * e["qty"]
+            st.metric("Estimated Total", f"S${round(sub_total, 2):,.2f}")
+
+            st.markdown("**Send to:**")
+            sb1, sb2, sb3 = st.columns([2, 2, 1])
+            with sb1:
+                if st.button("📋 → Quote Builder (standard sizes)", type="primary", use_container_width=True, key="ai_to_quote"):
+                    added = 0
+                    for e in edited:
+                        try:
+                            item_obj = parsed_to_order_item(e, species_rate, inch_to_mm)
+                            st.session_state.order_items.append(item_obj)
+                            st.session_state.q_ready = False
+                            added += 1
+                        except Exception as ex:
+                            st.warning(f"Skipped one item: {ex}")
+                    st.success(f"✅ {added} item(s) added to Quote Builder — go to 📋 Quote Builder tab")
+                    st.session_state.ai_parsed = []
+                    st.session_state.ai_ran    = False
+                    st.rerun()
+
+            with sb2:
+                if st.button("📐 → Odd Size (exact mm pricing)", use_container_width=True, key="ai_to_odd"):
+                    added = 0
+                    for e in edited:
+                        try:
+                            item_obj = parsed_to_odd_item(e, species_rate)
+                            st.session_state.odd_items.append(item_obj)
+                            st.session_state.odd_ready = False
+                            added += 1
+                        except Exception as ex:
+                            st.warning(f"Skipped one item: {ex}")
+                    st.success(f"✅ {added} item(s) added to Odd Size — go to 📐 Odd Size tab")
+                    st.session_state.ai_parsed = []
+                    st.session_state.ai_ran    = False
+                    st.rerun()
+
+            with sb3:
+                if st.button("🗑️ Clear All", use_container_width=True, key="ai_clear_all"):
+                    st.session_state.ai_parsed = []
+                    st.session_state.ai_ran    = False
+                    st.rerun()
 
 # ============================================================
 # FOOTER
 # ============================================================
 st.markdown("---")
-st.caption("Timber AI Assistant V26  ·  Professional Quoting System  ·  Prices in SGD")
+st.caption("Timber AI Assistant V26-AI  ·  Professional Quoting System  ·  Prices in SGD  ·  AI Parser enabled")
