@@ -76,112 +76,110 @@ PLY_GRADES = [
 # ============================================================
 STANDARD_FT  = [6, 8, 10, 12, 14, 16, 18, 20, 22]
 FT_TO_M      = {6:1.8, 8:2.4, 10:3.0, 12:3.6, 14:4.2, 16:4.8, 18:5.4, 20:6.0, 22:6.6}
-TIMBER_DENSITY_KG_M3 = 800  # tropical hardwood average
+TIMBER_DENSITY_KG_M3 = 706  # calibrated to trade standard: 7200 / (w_inch * h_inch * l_ft)
 
 STANDARD_SIZES = [
-    # (width_mm, thickness_mm, display_label)   — QB = Quote Builder, ODD = Odd Size tab
+    # (width_mm, thickness_mm, display_label, nom_w_inch, nom_h_inch)
+    # nom_w/h used for QB 7200 formula; ODD sizes use actual mm
     # 1" group
-    (20,  20,  '20 x 20mm (1" x 1")'),           # QB
+    (20,  20,  '20 x 20mm (1" x 1")',    1,  1),   # QB
     # 2" group
-    (43,  20,  '43 x 20mm (2" x 1")'),            # QB
-    (43,  43,  '43 x 43mm (2" x 2")'),            # QB
+    (43,  20,  '43 x 20mm (2" x 1")',    2,  1),   # QB
+    (43,  43,  '43 x 43mm (2" x 2")',    2,  2),   # QB
     # 3" group
-    (70,  20,  '70 x 20mm (3" x 1")'),            # QB
-    (70,  43,  '70 x 43mm (3" x 2")'),            # QB
-    (70,  70,  '70 x 70mm (3" x 3")'),            # QB
+    (70,  20,  '70 x 20mm (3" x 1")',    3,  1),   # QB
+    (70,  43,  '70 x 43mm (3" x 2")',    3,  2),   # QB
+    (70,  70,  '70 x 70mm (3" x 3")',    3,  3),   # QB
     # 4" group
-    (93,  20,  '93 x 20mm (4" x 1")'),            # QB
-    (93,  43,  '93 x 43mm (4" x 2")'),            # QB
-    (93,  70,  '93 x 70mm (4" x 3")'),            # QB
-    (93,  93,  '93 x 93mm (4" x 4")'),            # QB
-    # 5" group — ODD SIZE only
-    (117, 20,  '117 x 20mm (5" x 1")'),
-    (117, 43,  '117 x 43mm (5" x 2")'),
-    (117, 70,  '117 x 70mm (5" x 3")'),
-    (117, 93,  '117 x 93mm (5" x 4")'),
-    (117, 117, '117 x 117mm (5" x 5")'),
+    (93,  20,  '93 x 20mm (4" x 1")',    4,  1),   # QB
+    (93,  43,  '93 x 43mm (4" x 2")',    4,  2),   # QB
+    (93,  70,  '93 x 70mm (4" x 3")',    4,  3),   # QB
+    (93,  93,  '93 x 93mm (4" x 4")',    4,  4),   # QB
+    # 5" group — ODD SIZE only (no nominal, uses actual mm)
+    (117, 20,  '117 x 20mm (5" x 1")',   None, None),
+    (117, 43,  '117 x 43mm (5" x 2")',   None, None),
+    (117, 70,  '117 x 70mm (5" x 3")',   None, None),
+    (117, 93,  '117 x 93mm (5" x 4")',   None, None),
+    (117, 117, '117 x 117mm (5" x 5")',  None, None),
     # 6" group
-    (143, 20,  '143 x 20mm (6" x 1")'),           # QB
-    (143, 43,  '143 x 43mm (6" x 2")'),           # QB
-    (143, 70,  '143 x 70mm (6" x 3")'),           # QB
-    (143, 93,  '143 x 93mm (6" x 4")'),           # QB
-    (143, 125, '143 x 125mm (6" x 5")'),          # QB
-    (143, 143, '143 x 143mm (6" x 6")'),          # QB
+    (143, 20,  '143 x 20mm (6" x 1")',   6,  1),   # QB
+    (143, 43,  '143 x 43mm (6" x 2")',   6,  2),   # QB
+    (143, 70,  '143 x 70mm (6" x 3")',   6,  3),   # QB
+    (143, 93,  '143 x 93mm (6" x 4")',   6,  4),   # QB
+    (143, 125, '143 x 125mm (6" x 5")',  6,  5),   # QB
+    (143, 143, '143 x 143mm (6" x 6")',  6,  6),   # QB
     # 7" group — ODD SIZE only
-    (168, 20,  '168 x 20mm (7" x 1")'),
-    (168, 43,  '168 x 43mm (7" x 2")'),
-    (168, 70,  '168 x 70mm (7" x 3")'),
-    (168, 93,  '168 x 93mm (7" x 4")'),
-    (168, 143, '168 x 143mm (7" x 6")'),
-    (168, 168, '168 x 168mm (7" x 7")'),
+    (168, 20,  '168 x 20mm (7" x 1")',   None, None),
+    (168, 43,  '168 x 43mm (7" x 2")',   None, None),
+    (168, 70,  '168 x 70mm (7" x 3")',   None, None),
+    (168, 93,  '168 x 93mm (7" x 4")',   None, None),
+    (168, 143, '168 x 143mm (7" x 6")',  None, None),
+    (168, 168, '168 x 168mm (7" x 7")',  None, None),
     # 8" group
-    (193, 20,  '193 x 20mm (8" x 1")'),           # QB
-    (193, 43,  '193 x 43mm (8" x 2")'),           # QB
-    (193, 70,  '193 x 70mm (8" x 3")'),           # QB
-    (193, 93,  '193 x 93mm (8" x 4")'),           # QB
+    (193, 20,  '193 x 20mm (8" x 1")',   8,  1),   # QB
+    (193, 43,  '193 x 43mm (8" x 2")',   8,  2),   # QB
+    (193, 70,  '193 x 70mm (8" x 3")',   8,  3),   # QB
+    (193, 93,  '193 x 93mm (8" x 4")',   8,  4),   # QB
     # 10" group
-    (243, 20,  '243 x 20mm (10" x 1")'),          # QB
-    (243, 43,  '243 x 43mm (10" x 2")'),          # QB
-    (243, 70,  '243 x 70mm (10" x 3")'),          # QB
+    (243, 20,  '243 x 20mm (10" x 1")',  10, 1),   # QB
+    (243, 43,  '243 x 43mm (10" x 2")',  10, 2),   # QB
+    (243, 70,  '243 x 70mm (10" x 3")',  10, 3),   # QB
     # 11" group — ODD SIZE only
-    (268, 20,  '268 x 20mm (11" x 1")'),
-    (268, 43,  '268 x 43mm (11" x 2")'),
-    (268, 70,  '268 x 70mm (11" x 3")'),
-    (268, 93,  '268 x 93mm (11" x 4")'),
-    (268, 143, '268 x 143mm (11" x 6")'),
+    (268, 20,  '268 x 20mm (11" x 1")',  None, None),
+    (268, 43,  '268 x 43mm (11" x 2")',  None, None),
+    (268, 70,  '268 x 70mm (11" x 3")',  None, None),
+    (268, 93,  '268 x 93mm (11" x 4")',  None, None),
+    (268, 143, '268 x 143mm (11" x 6")', None, None),
     # 12" group
-    (293, 20,  '293 x 20mm (12" x 1")'),          # QB
-    (293, 45,  '293 x 45mm (12" x 2")'),          # QB
-    (293, 70,  '293 x 70mm (12" x 3")'),          # QB
-    (293, 95,  '293 x 95mm (12" x 4")'),          # QB
-    (293, 125, '293 x 125mm (12" x 5")'),         # QB
-    (293, 145, '293 x 145mm (12" x 6")'),         # QB
-    (293, 195, '293 x 195mm (12" x 8")'),         # QB
+    (293, 20,  '293 x 20mm (12" x 1")',  12, 1),   # QB
+    (293, 45,  '293 x 45mm (12" x 2")',  12, 2),   # QB
+    (293, 70,  '293 x 70mm (12" x 3")',  12, 3),   # QB
+    (293, 95,  '293 x 95mm (12" x 4")',  12, 4),   # QB
+    (293, 125, '293 x 125mm (12" x 5")', 12, 5),   # QB
+    (293, 145, '293 x 145mm (12" x 6")', 12, 6),   # QB
+    (293, 195, '293 x 195mm (12" x 8")', 12, 8),   # QB
 ]
 
 # QB sizes only (exclude 5", 7", 11" odd groups)
-QB_SIZES = [s for s in STANDARD_SIZES if s[0] not in (117, 168, 268)]
+QB_SIZES = [s for s in STANDARD_SIZES if s[3] is not None]
 
 # All sizes for Odd Size dropdown (full list)
 ODD_SIZES = STANDARD_SIZES
+
+def size_options_for_dropdown():
+    return [s[2] for s in QB_SIZES]
+
+def odd_size_options_for_dropdown():
+    return [s[2] for s in ODD_SIZES]
+
+def lookup_size(label):
+    """Return (width_mm, thickness_mm, nom_w_inch, nom_h_inch)."""
+    for entry in STANDARD_SIZES:
+        if entry[2] == label:
+            return entry[0], entry[1], entry[3], entry[4]
+    return None, None, None, None
+
+def suggest_quote_size(cust_w_mm, cust_h_mm):
+    best = None; best_dist = float('inf')
+    for entry in ODD_SIZES:
+        w, h = entry[0], entry[1]
+        if w >= cust_w_mm and h >= cust_h_mm:
+            dist = (w - cust_w_mm) + (h - cust_h_mm)
+            if dist < best_dist:
+                best_dist = dist; best = entry
+    if best is None:
+        for entry in ODD_SIZES:
+            w, h = entry[0], entry[1]
+            dist = abs(w - cust_w_mm) + abs(h - cust_h_mm)
+            if dist < best_dist:
+                best_dist = dist; best = entry
+    return best
 
 def pcs_per_ton(w_mm, h_mm, ft):
     """Calculate pcs/ton from dimensions. Uses volume-weight method."""
     m   = FT_TO_M[ft]
     vol = (w_mm / 1000) * (h_mm / 1000) * m   # m³ per piece
     return max(round(1 / (vol * TIMBER_DENSITY_KG_M3 / 1000)), 1)
-
-def size_options_for_dropdown():
-    """Returns list of label strings for the Quote Builder size dropdown (QB sizes only)."""
-    return [s[2] for s in QB_SIZES]
-
-def odd_size_options_for_dropdown():
-    """Returns list of label strings for Odd Size quote dropdown (full list)."""
-    return [s[2] for s in ODD_SIZES]
-
-def lookup_size(label):
-    """Given a label, return (width_mm, thickness_mm). Searches full list."""
-    for w, h, lbl in STANDARD_SIZES:
-        if lbl == label:
-            return w, h
-    return None, None
-
-def suggest_quote_size(cust_w_mm, cust_h_mm):
-    """Given customer freetype mm dims, find nearest standard size to quote."""
-    best = None; best_dist = float('inf')
-    for w, h, lbl in ODD_SIZES:
-        # nearest size that is >= customer size in both dims (round up)
-        if w >= cust_w_mm and h >= cust_h_mm:
-            dist = (w - cust_w_mm) + (h - cust_h_mm)
-            if dist < best_dist:
-                best_dist = dist; best = (w, h, lbl)
-    if best is None:
-        # fallback: nearest by total distance
-        for w, h, lbl in ODD_SIZES:
-            dist = abs(w - cust_w_mm) + abs(h - cust_h_mm)
-            if dist < best_dist:
-                best_dist = dist; best = (w, h, lbl)
-    return best
 
 # ============================================================
 # PLYWOOD PRICE TABLES
@@ -378,13 +376,18 @@ def mm_to_inch(mm):
         if abs(mm - val) <= 6: return inch
     return max(round(mm / 25.4), 1)
 
-def calc_from_mm(w_mm, h_mm, ft, rate):
-    """Core calc using mm dimensions directly. Returns (pcs_per_ton_raw, pcs_floor, price_per_pc)."""
-    m       = FT_TO_M[ft]
-    vol     = (w_mm / 1000) * (h_mm / 1000) * m
-    raw_pcs = 1 / (vol * TIMBER_DENSITY_KG_M3 / 1000)
-    pcs     = max(math.floor(raw_pcs), 1)
-    price   = round(rate / pcs, 2)
+def calc_from_mm(w_mm, h_mm, ft, rate, nom_w=None, nom_h=None):
+    """QB pricing: uses nominal inches if available (7200 formula), else actual mm."""
+    if nom_w and nom_h:
+        # QB path: 7200 / nom_w / nom_h / ft
+        raw_pcs = 7200 / nom_w / nom_h / ft
+    else:
+        # Odd size path: actual mm dimensions
+        m   = FT_TO_M[ft]
+        vol = (w_mm / 1000) * (h_mm / 1000) * m
+        raw_pcs = 1 / (vol * TIMBER_DENSITY_KG_M3 / 1000)
+    pcs   = max(math.floor(raw_pcs), 1)
+    price = math.ceil(rate / pcs)
     return round(raw_pcs, 3), pcs, price
 
 def is_keruing(species):
@@ -621,7 +624,7 @@ def parsed_to_odd_item(p, species_rate_map):
     vol       = (wid / 1000) * (thk / 1000) * length_m
     raw       = 1 / (vol * TIMBER_DENSITY_KG_M3 / 1000)
     pcs_floor = max(math.floor(raw), 1)
-    price     = round(rate / pcs_floor)
+    price     = math.ceil(rate / pcs_floor)
     cust_size = f"{thk}mm x {wid}mm x {length_m}m"
     return {
         "species": sp, "cust_size": cust_size, "quote_size": cust_size, "price": price, "qty": qty,
@@ -672,20 +675,21 @@ with tab_quote:
         with fc1: f_sp   = st.selectbox("Species", SPECIES, key="f_sp")
         with fc2: f_size = st.selectbox("Size (mm)", size_labels, key="f_size")
         with fc3: f_ft_label = st.selectbox("Length", ft_labels, key="f_ft")
-        with fc4: f_qty  = st.number_input("Qty", min_value=None, value=None, placeholder="e.g. 1", step=1.0, format="%.0f", key="f_qty")
+        with fc4: f_qty  = st.number_input("Qty", min_value=1, value=1, step=1, key="f_qty")
         with fc5:
             st.markdown("<br>", unsafe_allow_html=True)
             add_btn = st.form_submit_button("+ Add", use_container_width=True)
 
         if add_btn and f_size and f_ft_label:
-            f_qty_int  = max(int(f_qty) if f_qty is not None else 1, 1)
+            f_qty_int  = max(int(f_qty), 1)
             ft_val     = int(f_ft_label.split(" ")[0])
-            w_mm, h_mm = lookup_size(f_size)
+            w_mm, h_mm, nom_w, nom_h = lookup_size(f_size)
             rate       = species_rate[f_sp]
-            raw, pcs, price = calc_from_mm(w_mm, h_mm, ft_val, rate)
+            raw, pcs, price = calc_from_mm(w_mm, h_mm, ft_val, rate, nom_w, nom_h)
             size_text  = f"{f_size} x {ft_val}ft"
             st.session_state.order_items.append({
-                "species": f_sp, "size": size_text, "w_mm": w_mm, "h_mm": h_mm, "ft": ft_val,
+                "species": f_sp, "size": size_text, "w_mm": w_mm, "h_mm": h_mm,
+                "nom_w": nom_w, "nom_h": nom_h, "ft": ft_val,
                 "price": price, "qty": f_qty_int, "line_total": round(price * f_qty_int, 2),
                 "rate": rate, "pcs_per_ton": raw, "small_qty": f_qty_int < SMALL_QTY
             })
@@ -693,9 +697,19 @@ with tab_quote:
             st.rerun()
 
     if st.session_state.order_items:
+        n_items = len(st.session_state.order_items)
+        st.markdown(
+            f'<div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:6px">'
+            f'Items in order: <span style="background:#1D9E75;color:white;font-size:12px;'
+            f'padding:2px 8px;border-radius:99px;font-weight:600">{n_items}</span></div>',
+            unsafe_allow_html=True
+        )
         for i, item in enumerate(st.session_state.order_items):
             cur_rate = species_rate[item["species"]]
-            raw, _, cur_price = calc_from_mm(item["w_mm"], item["h_mm"], item["ft"], cur_rate)
+            raw, _, cur_price = calc_from_mm(
+                item["w_mm"], item["h_mm"], item["ft"], cur_rate,
+                item.get("nom_w"), item.get("nom_h")
+            )
             cur_total = round(cur_price * item["qty"], 2)
             col_a, col_b, col_c = st.columns([3, 3, 1])
             with col_a: st.write(f"**{item['species']}**  {item['size']}")
@@ -707,16 +721,24 @@ with tab_quote:
                     st.rerun()
 
         st.divider()
-        cg1, cg2 = st.columns([2, 1])
+        cg1, cg2, cg3 = st.columns([2, 1, 1])
         with cg1: gen_quote = st.button("GENERATE QUOTE", type="primary", use_container_width=True)
         with cg2:
+            if st.button("🗑️ Clear List", use_container_width=True):
+                st.session_state.order_items = []
+                st.session_state.q_ready = False
+                st.rerun()
+        with cg3:
             if st.button("RESET ALL", use_container_width=True): reset_all()
 
         if gen_quote:
             log_items = []; customer_reply = []; grand_total = 0; cost_total = 0
             for item in st.session_state.order_items:
                 cur_rate = species_rate[item["species"]]
-                cur_raw, _, cur_price = calc_from_mm(item["w_mm"], item["h_mm"], item["ft"], cur_rate)
+                cur_raw, _, cur_price = calc_from_mm(
+                    item["w_mm"], item["h_mm"], item["ft"], cur_rate,
+                    item.get("nom_w"), item.get("nom_h")
+                )
                 gt = round(cur_price * item["qty"], 2)
                 grand_total += gt
                 cost_est = round(gt * 0.85, 2); cost_total += cost_est
@@ -848,12 +870,15 @@ with tab_odd:
     if "odd_qlen_free" not in st.session_state:
         st.session_state.odd_qlen_free = None
 
-    tm1, tm2 = st.columns([1, 4])
-    with tm1:
-        mode = st.radio("Input mode", ["Dropdown", "Free type"], horizontal=True,
-                        index=0 if st.session_state.odd_qmode == "dropdown" else 1,
-                        key="odd_qmode_radio", label_visibility="collapsed")
-        st.session_state.odd_qmode = "dropdown" if mode == "Dropdown" else "free"
+    st.markdown("""
+    <style>
+    div[data-testid="stRadio"] label { font-size:15px !important; font-weight:500 !important; }
+    div[data-testid="stRadio"] { display:flex; justify-content:center; margin-bottom:8px; }
+    </style>""", unsafe_allow_html=True)
+    mode = st.radio("Quote size input mode", ["📋 Dropdown", "✏️ Free Type"], horizontal=True,
+                    index=0 if st.session_state.odd_qmode == "dropdown" else 1,
+                    key="odd_qmode_radio")
+    st.session_state.odd_qmode = "dropdown" if "Dropdown" in mode else "free"
 
     # Default index for length dropdown
     qft_default_idx = STANDARD_FT.index(st.session_state.odd_qft) if st.session_state.odd_qft in STANDARD_FT else 1
@@ -878,8 +903,8 @@ with tab_odd:
             selected_qft = int(selected_qft_label.split(" ")[0])
             st.session_state.odd_qft = selected_qft
 
-        # Resolve mm dims from dropdown label
-        qw_mm, qh_mm = lookup_size(selected_qsize)
+        # Resolve mm dims from dropdown label — odd size ALWAYS uses actual mm
+        qw_mm, qh_mm, _, _ = lookup_size(selected_qsize)
         q_len_m_use  = FT_TO_M[selected_qft]
         quote_size_str = f"{selected_qsize} × {selected_qft}ft"
 
@@ -924,7 +949,7 @@ with tab_odd:
         vol     = (qw_mm / 1000) * (qh_mm / 1000) * q_len_m_use
         raw_pcs = 1 / (vol * TIMBER_DENSITY_KG_M3 / 1000)
         pcs_fl  = max(math.floor(raw_pcs), 1)
-        price_preview = round(odd_rate / pcs_fl)
+        price_preview = math.ceil(odd_rate / pcs_fl)
         line_preview  = round(price_preview * st.session_state.odd_qty, 2)
         st.caption(
             f"Preview: {quote_size_str}  →  "
@@ -946,7 +971,7 @@ with tab_odd:
                 vol2    = (qw_mm / 1000) * (qh_mm / 1000) * q_len_m_use
                 raw2    = 1 / (vol2 * TIMBER_DENSITY_KG_M3 / 1000)
                 pcs_fl2 = max(math.floor(raw2), 1)
-                price2  = round(odd_rate / pcs_fl2)
+                price2  = math.ceil(odd_rate / pcs_fl2)
                 line_tot2 = round(price2 * st.session_state.odd_qty, 2)
                 st.session_state.odd_items.append({
                     "species":     st.session_state.odd_sp,
