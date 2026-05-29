@@ -833,49 +833,101 @@ with tab_odd:
                 st.session_state.odd_qsize_label = sug_lbl
                 st.rerun()
 
-    st.markdown("**② Your Quote Size** — select from dropdown (used for pricing)")
+    st.markdown("**② Your Quote Size** — select from dropdown or type freely (used for pricing)")
 
     odd_all_labels = odd_size_options_for_dropdown()
     ft_labels_odd  = [f"{ft} ft  ({FT_TO_M[ft]} m)" for ft in STANDARD_FT]
 
-    # Default index for quote size dropdown
-    qsize_default_idx = 0
-    if st.session_state.odd_qsize_label and st.session_state.odd_qsize_label in odd_all_labels:
-        qsize_default_idx = odd_all_labels.index(st.session_state.odd_qsize_label)
+    # Toggle: dropdown vs free type
+    if "odd_qmode" not in st.session_state:
+        st.session_state.odd_qmode = "dropdown"
+    if "odd_qthk_free" not in st.session_state:
+        st.session_state.odd_qthk_free = None
+    if "odd_qwid_free" not in st.session_state:
+        st.session_state.odd_qwid_free = None
+    if "odd_qlen_free" not in st.session_state:
+        st.session_state.odd_qlen_free = None
+
+    tm1, tm2 = st.columns([1, 4])
+    with tm1:
+        mode = st.radio("Input mode", ["Dropdown", "Free type"], horizontal=True,
+                        index=0 if st.session_state.odd_qmode == "dropdown" else 1,
+                        key="odd_qmode_radio", label_visibility="collapsed")
+        st.session_state.odd_qmode = "dropdown" if mode == "Dropdown" else "free"
 
     # Default index for length dropdown
     qft_default_idx = STANDARD_FT.index(st.session_state.odd_qft) if st.session_state.odd_qft in STANDARD_FT else 1
 
-    qd1, qd2 = st.columns([3, 2])
-    with qd1:
-        selected_qsize = st.selectbox(
-            "Quote Size (thickness × width)",
-            odd_all_labels,
-            index=qsize_default_idx,
-            key="odd_qsize_sel"
+    if st.session_state.odd_qmode == "dropdown":
+        # Default index for quote size dropdown
+        qsize_default_idx = 0
+        if st.session_state.odd_qsize_label and st.session_state.odd_qsize_label in odd_all_labels:
+            qsize_default_idx = odd_all_labels.index(st.session_state.odd_qsize_label)
+
+        qd1, qd2 = st.columns([3, 2])
+        with qd1:
+            selected_qsize = st.selectbox(
+                "Quote Size (thickness × width)",
+                odd_all_labels, index=qsize_default_idx, key="odd_qsize_sel"
+            )
+            st.session_state.odd_qsize_label = selected_qsize
+        with qd2:
+            selected_qft_label = st.selectbox(
+                "Quote Length", ft_labels_odd, index=qft_default_idx, key="odd_qft_sel"
+            )
+            selected_qft = int(selected_qft_label.split(" ")[0])
+            st.session_state.odd_qft = selected_qft
+
+        # Resolve mm dims from dropdown label
+        qw_mm, qh_mm = lookup_size(selected_qsize)
+        q_len_m_use  = FT_TO_M[selected_qft]
+        quote_size_str = f"{selected_qsize} × {selected_qft}ft"
+
+    else:
+        # Free type mode
+        st.caption("Type any custom quote size — not limited to standard list")
+        fc1, fc2, fc3, fc4, fc5, fc6 = st.columns(6)
+        with fc1:
+            st.session_state.odd_qthk_free = st.number_input(
+                "Thickness", min_value=None, value=st.session_state.odd_qthk_free,
+                placeholder="e.g. 130", step=0.5, format="%.1f", key="odd_qthk_free_inp")
+        with fc2:
+            st.caption("mm")
+        with fc3:
+            st.session_state.odd_qwid_free = st.number_input(
+                "Width", min_value=None, value=st.session_state.odd_qwid_free,
+                placeholder="e.g. 180", step=0.5, format="%.1f", key="odd_qwid_free_inp")
+        with fc4:
+            st.caption("mm")
+        with fc5:
+            st.session_state.odd_qlen_free = st.number_input(
+                "Length", min_value=None, value=st.session_state.odd_qlen_free,
+                placeholder="e.g. 3.0", step=0.1, format="%.2f", key="odd_qlen_free_inp")
+        with fc6:
+            st.caption("m")
+
+        qh_mm   = float(st.session_state.odd_qthk_free) if st.session_state.odd_qthk_free else None
+        qw_mm   = float(st.session_state.odd_qwid_free) if st.session_state.odd_qwid_free else None
+        q_len_m_use = float(st.session_state.odd_qlen_free) if st.session_state.odd_qlen_free else None
+        selected_qft = None
+        selected_qsize = (
+            f"{st.session_state.odd_qthk_free}mm × {st.session_state.odd_qwid_free}mm"
+            if qh_mm and qw_mm else None
         )
-        st.session_state.odd_qsize_label = selected_qsize
-    with qd2:
-        selected_qft_label = st.selectbox(
-            "Quote Length",
-            ft_labels_odd,
-            index=qft_default_idx,
-            key="odd_qft_sel"
+        quote_size_str = (
+            f"{st.session_state.odd_qthk_free}mm × {st.session_state.odd_qwid_free}mm × {st.session_state.odd_qlen_free}m"
+            if qh_mm and qw_mm and q_len_m_use else None
         )
-        selected_qft = int(selected_qft_label.split(" ")[0])
-        st.session_state.odd_qft = selected_qft
 
     # Live price preview
-    qw_mm, qh_mm = lookup_size(selected_qsize)
-    if qw_mm and qh_mm:
-        q_len_m = FT_TO_M[selected_qft]
-        vol     = (qw_mm / 1000) * (qh_mm / 1000) * q_len_m
+    if qw_mm and qh_mm and q_len_m_use:
+        vol     = (qw_mm / 1000) * (qh_mm / 1000) * q_len_m_use
         raw_pcs = 1 / (vol * TIMBER_DENSITY_KG_M3 / 1000)
         pcs_fl  = max(math.floor(raw_pcs), 1)
         price_preview = round(odd_rate / pcs_fl)
         line_preview  = round(price_preview * st.session_state.odd_qty, 2)
         st.caption(
-            f"Preview: {selected_qsize} × {selected_qft}ft  →  "
+            f"Preview: {quote_size_str}  →  "
             f"{round(raw_pcs, 2)} pcs/ton (floor {pcs_fl})  →  "
             f"**S${price_preview}/pc × {st.session_state.odd_qty} = S${line_preview:,.2f}**"
         )
@@ -884,39 +936,39 @@ with tab_odd:
     with ob1:
         if st.button("+ Add to Odd Size List", type="primary", use_container_width=True):
             cthk = st.session_state.odd_cthk; cwid = st.session_state.odd_cwid; clen = st.session_state.odd_clen
-            if cthk and cwid and clen and selected_qsize and selected_qft:
+            if cthk and cwid and clen and qw_mm and qh_mm and q_len_m_use:
                 ctu = st.session_state.odd_ctu; cwu = st.session_state.odd_cwu; clu = st.session_state.odd_clu
                 cust_size = (
                     f'{cthk}" x {cwid}" x {clen}{"ft" if clu=="ft" else "m"}'
                     if ctu == "inch"
                     else f"{cthk}mm x {cwid}mm x {clen}{clu}"
                 )
-                qw_mm2, qh_mm2 = lookup_size(selected_qsize)
-                q_len_m2  = FT_TO_M[selected_qft]
-                vol2      = (qw_mm2 / 1000) * (qh_mm2 / 1000) * q_len_m2
-                raw2      = 1 / (vol2 * TIMBER_DENSITY_KG_M3 / 1000)
-                pcs_fl2   = max(math.floor(raw2), 1)
-                price2    = round(odd_rate / pcs_fl2)
+                vol2    = (qw_mm / 1000) * (qh_mm / 1000) * q_len_m_use
+                raw2    = 1 / (vol2 * TIMBER_DENSITY_KG_M3 / 1000)
+                pcs_fl2 = max(math.floor(raw2), 1)
+                price2  = round(odd_rate / pcs_fl2)
                 line_tot2 = round(price2 * st.session_state.odd_qty, 2)
-                quote_size_str = f"{selected_qsize} × {selected_qft}ft"
                 st.session_state.odd_items.append({
-                    "species":    st.session_state.odd_sp,
-                    "cust_size":  cust_size,
-                    "quote_size": quote_size_str,
-                    "price":      price2,
-                    "qty":        st.session_state.odd_qty,
-                    "line_total": line_tot2,
-                    "rate":       odd_rate,
+                    "species":     st.session_state.odd_sp,
+                    "cust_size":   cust_size,
+                    "quote_size":  quote_size_str,
+                    "price":       price2,
+                    "qty":         st.session_state.odd_qty,
+                    "line_total":  line_tot2,
+                    "rate":        odd_rate,
                     "pcs_per_ton": round(raw2, 4),
-                    "pcs_floor":  pcs_fl2,
-                    "small_qty":  st.session_state.odd_qty < SMALL_QTY
+                    "pcs_floor":   pcs_fl2,
+                    "small_qty":   st.session_state.odd_qty < SMALL_QTY
                 })
                 st.session_state.odd_ready = False
                 st.session_state.odd_qsize_label = None
+                st.session_state.odd_qthk_free = None
+                st.session_state.odd_qwid_free = None
+                st.session_state.odd_qlen_free = None
                 st.success(f"Added: {cust_size} → priced as {quote_size_str} @ S${price2}/pc")
                 st.rerun()
             else:
-                st.error("Please fill in customer thickness, width, length and select a quote size.")
+                st.error("Please fill in all customer size fields and quote size before adding.")
     with ob2:
         if st.button("Clear Inputs", use_container_width=True):
             for k in ["odd_cthk","odd_cwid","odd_clen","odd_qsize_label","odd_suggest"]:
