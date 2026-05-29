@@ -1,5 +1,5 @@
 # ============================================================
-# Timber AI Assistant V27 — PART 1 of 3
+# Timber Assistant V27 — PART 1 of 3
 # CONFIG & DATA
 # Paste this FIRST at the top of your app.py in GitHub
 # ============================================================
