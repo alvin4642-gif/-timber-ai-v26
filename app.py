@@ -1,5 +1,5 @@
 # ============================================================
-# Timber AI Assistant V28 — PART 1 of 3
+# Timber AI Assistant V27 — PART 1 of 3
 # CONFIG & DATA
 # Paste this FIRST at the top of your app.py in GitHub
 # ============================================================
@@ -245,6 +245,7 @@ _defaults = {
     "sel_grade":   "MR China",
     "odd_cthk": None, "odd_cwid": None, "odd_clen": None,
     "odd_qthk": None, "odd_qwid": None, "odd_qlen": None,
+    "odd_ctu": "mm", "odd_cwu": "mm", "odd_clu": "m",
     "odd_sp":  "Kapur",
     "odd_qsize_label": None,   # selected quote size label from dropdown
     "odd_qft": 8,              # selected quote length ft
@@ -297,7 +298,7 @@ st.divider()
 # END OF PART 1 — paste Part 2 immediately below this line
 # ============================================================
 # ============================================================
-# Timber AI Assistant V28 — PART 2 of 3
+# Timber AI Assistant V27 — PART 2 of 3
 # FUNCTIONS: Gist helpers, calc engine, parser, UI utilities
 # Paste this SECOND, immediately after Part 1
 # ============================================================
@@ -632,7 +633,7 @@ def parsed_to_odd_item(p, species_rate_map):
 # END OF PART 2 — paste Part 3 immediately below this line
 # ============================================================
 # ============================================================
-# Timber AI Assistant V28 — PART 3 of 3
+# Timber AI Assistant V27 — PART 3 of 3
 # UI TABS: Quote Builder, Odd Size, Plywood, Suppliers, History
 # Paste this THIRD, immediately after Part 2
 # AI Parser and Plywood Cut-to-Size removed — built as separate apps
