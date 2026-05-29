@@ -670,20 +670,19 @@ with tab_quote:
     size_labels = size_options_for_dropdown()
     ft_labels   = [f"{ft} ft  ({FT_TO_M[ft]} m)" for ft in STANDARD_FT]
 
-    with st.form("add_timber_form", clear_on_submit=True):
-        fc1, fc2, fc3 = st.columns([2, 2, 2])
+    with st.form("add_timber_form", clear_on_submit=False):
+        fc1, fc2, fc3, fc4, fc5 = st.columns([2, 2, 2, 1, 1])
         with fc1: f_sp       = st.selectbox("Species", SPECIES, key="f_sp")
         with fc2: f_size     = st.selectbox("Size (mm)", size_labels, key="f_size")
         with fc3: f_ft_label = st.selectbox("Length", ft_labels, key="f_ft")
-        fq1, fq2 = st.columns([1, 3])
-        with fq1: f_qty = st.number_input("Qty (pcs)", min_value=1, value=1, step=1, key="f_qty")
-        with fq2:
+        with fc4: f_qty      = st.number_input("Qty (pcs)", min_value=1, value=st.session_state.get("f_qty_val", 1), step=1, key="f_qty")
+        with fc5:
             st.markdown("<br>", unsafe_allow_html=True)
-            add_btn = st.form_submit_button("+ Add Item", type="primary", use_container_width=True)
-        st.caption("💡 Press Enter after typing Qty, or click '+ Add Item'")
+            add_btn = st.form_submit_button("+ Add", type="primary", use_container_width=True)
 
         if add_btn and f_size and f_ft_label:
-            f_qty_int  = max(int(f_qty), 1)
+            # Read directly from session_state — not cleared by form
+            f_qty_int  = max(int(st.session_state.get("f_qty", 1)), 1)
             ft_val     = int(f_ft_label.split(" ")[0])
             w_mm, h_mm, nom_w, nom_h = lookup_size(f_size)
             rate       = species_rate[f_sp]
@@ -696,6 +695,7 @@ with tab_quote:
                 "rate": rate, "pcs_per_ton": raw, "small_qty": f_qty_int < SMALL_QTY
             })
             st.session_state.q_ready = False
+            st.session_state["f_qty_val"] = 1  # reset qty display to 1 after add
             st.rerun()
 
     if st.session_state.order_items:
