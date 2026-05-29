@@ -1,4 +1,582 @@
 # ============================================================
+# Timber AI Assistant V27 — PART 1 of 3
+# CONFIG & DATA
+# Paste this FIRST at the top of your app.py in GitHub
+# ============================================================
+
+import streamlit as st
+import math
+import json
+import requests
+import re
+from datetime import datetime
+
+st.set_page_config(layout="wide", page_title="Timber AI Assistant V27", page_icon="🪵")
+
+# ============================================================
+# CSS
+# ============================================================
+st.markdown("""
+<style>
+.app-header {
+    border-left: 4px solid #1D9E75;
+    padding: 14px 20px;
+    background: var(--background-color);
+    border-radius: 10px;
+    border: 0.5px solid #e0e0e0;
+    border-left-width: 4px;
+    margin-bottom: 1rem;
+}
+.app-header-title { font-size: 22px; font-weight: 600; color: inherit; display: flex; align-items: center; gap: 10px; }
+.app-header-sub { font-size: 13px; color: #888; margin-top: 4px; }
+.stButton button[kind="primary"] { background-color:#10b981!important; color:white!important; }
+.stButton button[kind="primary"]:hover { background-color:#059669!important; }
+.stTextArea textarea { font-family:'Calibri','Segoe UI',sans-serif!important; font-size:14px!important; line-height:1.7!important; }
+.staff-log { background: #fafafa; border: 1px solid #e8e8e8; border-radius: 10px; overflow: hidden; }
+.staff-log-header { background: #1D9E75; color: white; font-size: 13px; font-weight: 600; padding: 8px 16px; letter-spacing: 0.03em; }
+.log-item { padding: 10px 16px; border-bottom: 0.5px solid #eee; }
+.log-item:last-child { border-bottom: none; }
+.log-item-head { font-size: 14px; font-weight: 600; color: #1a1a1a; margin-bottom: 6px; display:flex; align-items:center; gap:8px; }
+.log-num { background:#E1F5EE; color:#0F6E56; font-size:11px; font-weight:600; width:20px; height:20px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+.log-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 20px; font-size: 13px; }
+.log-label { color: #888; }
+.log-val { color: #1a1a1a; font-weight: 500; }
+.log-profit { color: #0F6E56; font-weight: 600; }
+.log-total { padding: 10px 16px; background: #E1F5EE; display: flex; justify-content: space-between; align-items: center; }
+.log-total-label { font-size: 14px; color: #0F6E56; font-weight: 600; }
+.log-total-val { font-size: 20px; font-weight: 700; color: #0F6E56; }
+.profit-chip { background:#EAF3DE; color:#3B6D11; font-size:11px; padding:1px 7px; border-radius:99px; margin-left:5px; }
+.warn-chip { background:#FAEEDA; color:#854F0B; font-size:13px; font-weight:600; padding:3px 10px; border-radius:99px; margin-left:5px; }
+.sup-header { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+.sup-avatar { width:44px; height:44px; border-radius:50%; background:#E1F5EE; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:600; color:#0F6E56; flex-shrink:0; }
+.sup-name { font-size:18px; font-weight:600; color:inherit; }
+.sup-sub { font-size:12px; color:#888; margin-top:2px; }
+</style>
+""", unsafe_allow_html=True)
+
+# ============================================================
+# CONSTANTS
+# ============================================================
+SPECIES   = ["Kapur", "Balau", "Chengal", "Mixed Keruing", "Pure Keruing"]
+SMALL_QTY = 10
+
+# inch nominal → actual mm (for display only in Quote Builder)
+inch_to_mm = {1:20, 2:43, 3:70, 4:93, 5:117, 6:143, 7:168, 8:193, 9:218, 10:243, 12:293}
+
+PLY_GRADES = [
+    "MR China", "WBP (TA)", "BB/CC Furniture",
+    "Casting Black China", "Casting Black Vietnam",
+    "Marine BS1088", "T2 Marine", "Fire Retardant BS476"
+]
+
+# ============================================================
+# STANDARD SIZES DATABASE — all sizes 6~22 ft
+# Format: (width_mm, height_mm, nominal_inch_label)
+# pcs/ton calculated live from dimensions; no hardcoded pcs table needed.
+# ============================================================
+STANDARD_FT  = [6, 8, 10, 12, 14, 16, 18, 20, 22]
+FT_TO_M      = {6:1.8, 8:2.4, 10:3.0, 12:3.6, 14:4.2, 16:4.8, 18:5.4, 20:6.0, 22:6.6}
+TIMBER_DENSITY_KG_M3 = 800  # tropical hardwood average
+
+STANDARD_SIZES = [
+    # (width_mm, thickness_mm, display_label_mm)
+    (20,  20,  "20 x 20mm"),
+    (43,  20,  "43 x 20mm"),
+    (43,  43,  "43 x 43mm"),
+    (70,  20,  "70 x 20mm"),
+    (70,  43,  "70 x 43mm"),
+    (70,  70,  "70 x 70mm"),
+    (93,  20,  "93 x 20mm"),
+    (93,  43,  "93 x 43mm"),
+    (93,  70,  "93 x 70mm"),
+    (93,  93,  "93 x 93mm"),
+    (143, 20,  "143 x 20mm"),
+    (143, 43,  "143 x 43mm"),
+    (143, 70,  "143 x 70mm"),
+    (143, 93,  "143 x 93mm"),    # NEW
+    (143, 125, "143 x 125mm"),   # NEW
+    (193, 20,  "193 x 20mm"),
+    (193, 43,  "193 x 43mm"),
+    (193, 70,  "193 x 70mm"),    # NEW
+    (193, 93,  "193 x 93mm"),    # NEW
+    (243, 20,  "243 x 20mm"),
+    (243, 43,  "243 x 43mm"),
+    (243, 45,  "243 x 45mm"),    # NEW
+    (243, 70,  "243 x 70mm"),    # NEW
+    (293, 20,  "293 x 20mm"),    # NEW (was 295 x 20)
+    (293, 45,  "293 x 45mm"),    # updated from 295 x 45
+    (293, 70,  "293 x 70mm"),    # NEW
+    (293, 95,  "293 x 95mm"),    # updated from 295 x 95
+    (293, 125, "293 x 125mm"),   # NEW
+    (293, 145, "293 x 145mm"),   # updated from 295 x 145
+    (293, 195, "293 x 195mm"),   # updated from 295 x 195
+]
+
+def pcs_per_ton(w_mm, h_mm, ft):
+    """Calculate pcs/ton from dimensions. Uses volume-weight method."""
+    m   = FT_TO_M[ft]
+    vol = (w_mm / 1000) * (h_mm / 1000) * m   # m³ per piece
+    return max(round(1 / (vol * TIMBER_DENSITY_KG_M3 / 1000)), 1)
+
+def size_options_for_dropdown():
+    """Returns list of mm label strings for the Quote Builder size dropdown."""
+    return [s[2] for s in STANDARD_SIZES]
+
+def lookup_size(label):
+    """Given a mm label, return (width_mm, thickness_mm)."""
+    for w, h, lbl in STANDARD_SIZES:
+        if lbl == label:
+            return w, h
+    return None, None
+
+# ============================================================
+# PLYWOOD PRICE TABLES
+# ============================================================
+PLY_SELL = {
+    "MR China":              {3:3.25,   6:6.63,   9:9.36,   12:14.04,  15:19.0,   18:21.63},
+    "WBP (TA)":              {6:11.31,  9:15.6,   12:18.46, 15:26.4,   18:27.5,   25:39.0},
+    "BB/CC Furniture":       {3:5.72,   6:14.3,   9:16.75,  12:21.0,   15:26.4,   18:30.84, 25:44.04},
+    "Casting Black China":   {12:18.84, 18:22.08},
+    "Casting Black Vietnam": {12:19.625,18:25.2},
+    "Marine BS1088":         {9:36.0,   12:45.96, 15:52.0,  18:63.0,   25:84.0},
+    "T2 Marine":             {6:21.0,   9:24.0,   12:31.2,  15:37.2,   18:43.2,   25:57.6},
+    "Fire Retardant BS476":  {3:40.0,   6:52.0,   9:74.0,   12:93.0,   15:102.0,  18:120.0, 25:150.0},
+}
+PLY_COST = {
+    "MR China":              {3:2.5,    6:5.1,    9:7.2,    12:10.8,   15:15.2,   18:17.3},
+    "WBP (TA)":              {6:8.7,    9:12.0,   12:14.2,  15:22.0,   18:22.0,   25:32.5},
+    "BB/CC Furniture":       {3:4.4,    6:11.0,   9:13.4,   12:16.8,   15:22.0,   18:25.7,  25:36.7},
+    "Casting Black China":   {12:15.7,  18:18.4},
+    "Casting Black Vietnam": {12:15.7,  18:21.0},
+    "Marine BS1088":         {9:30.0,   12:38.3,  15:46.2,  18:56.7,   25:77.7},
+    "T2 Marine":             {6:17.5,   9:20.0,   12:26.0,  15:31.0,   18:36.0,   25:48.0},
+    "Fire Retardant BS476":  {3:14.0,   6:26.0,   9:37.0,   12:49.0,   15:63.0,   18:70.0,  25:80.0},
+}
+PLY_ACTUAL = {
+    "MR China":        {3: "actual +-1.8mm (China)"},
+    "BB/CC Furniture": {3: "actual +-2.2mm"},
+}
+PLY_MOQ = {
+    "MR China":              {3: 10},
+    "WBP (TA)":              {},
+    "BB/CC Furniture":       {3: 10},
+    "Casting Black China":   {},
+    "Casting Black Vietnam": {},
+    "Marine BS1088":         {},
+    "T2 Marine":             {},
+    "Fire Retardant BS476":  {3: 10},
+}
+
+# ============================================================
+# SPECIES MAP
+# ============================================================
+SPECIES_MAP = {
+    "pure keruing":  "Pure Keruing",
+    "mixed keruing": "Mixed Keruing",
+    "keruing":       "Mixed Keruing",
+    "chengal":"Chengal","chengai":"Chengal","chenggal":"Chengal",
+    "kapur":"Kapur","kapor":"Kapur",
+    "balau":"Balau","balu":"Balau",
+    "坡楼":"Chengal","柚木":"Chengal","重坡楼":"Chengal",
+    "山樟":"Kapur","樟木":"Kapur","卡布":"Kapur",
+    "芭劳":"Balau","巴劳":"Balau","八劳":"Balau",
+    "克鲁英":"Mixed Keruing","苦楝":"Mixed Keruing","克鲁":"Mixed Keruing",
+}
+
+# ============================================================
+# SESSION STATE
+# ============================================================
+_defaults = {
+    "order_items": [], "odd_items": [], "ply_items": [],
+    "sel_grade":   "MR China",
+    "odd_cthk": None, "odd_cwid": None, "odd_clen": None,
+    "odd_qthk": None, "odd_qwid": None, "odd_qlen": None,
+    "odd_sp":  "Kapur",
+    "odd_ctu": "mm", "odd_cwu": "mm", "odd_clu": "m",
+    "odd_qtu": "mm", "odd_qwu": "mm", "odd_qlu": "m",
+    "odd_qty": 1,
+    "cust_name": "", "cust_mobile": "",
+    "q_ready":   False, "q_reply":   "", "q_total":   0.0, "q_cost":   0.0, "q_nitem": 0, "q_log":   [],
+    "odd_ready": False, "odd_reply": "", "odd_total": 0.0, "odd_cost": 0.0, "odd_nitem":0, "odd_log": [],
+    "ply_ready": False, "ply_reply": "", "ply_total": 0.0, "ply_cost": 0.0, "ply_nitem":0, "ply_log": [],
+    "hist_search_val": "",
+}
+for _k, _v in _defaults.items():
+    if _k not in st.session_state:
+        st.session_state[_k] = _v
+
+def reset_all():
+    for k in list(st.session_state.keys()): del st.session_state[k]
+    st.rerun()
+
+# ============================================================
+# HEADER
+# ============================================================
+st.markdown("""
+<div class="app-header">
+  <div class="app-header-title">🪵 Timber AI Assistant
+    <span style="background:#1D9E75;color:white;font-size:13px;padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle">V27</span>
+  </div>
+  <div class="app-header-sub">Professional Quoting System &nbsp;·&nbsp; Prices in SGD &nbsp;·&nbsp; PLONY Industries</div>
+</div>
+""", unsafe_allow_html=True)
+
+# ============================================================
+# RATE INPUTS
+# ============================================================
+st.subheader("Current Rates (SGD/ton)")
+rc1, rc2, rc3, rc4, rc5 = st.columns(5)
+with rc1: kapur_rate    = st.number_input("Kapur",         min_value=0, value=3800, step=50, key="r_kapur")
+with rc2: balau_rate    = st.number_input("Balau",         min_value=0, value=5500, step=50, key="r_balau")
+with rc3: cheng_rate    = st.number_input("Chengal",       min_value=0, value=6000, step=50, key="r_cheng")
+with rc4: mkeruing_rate = st.number_input("Mixed Keruing", min_value=0, value=650,  step=50, key="r_mker")
+with rc5: pkeruing_rate = st.number_input("Pure Keruing",  min_value=0, value=1000, step=50, key="r_pker")
+
+species_rate = {
+    "Kapur": kapur_rate, "Balau": balau_rate, "Chengal": cheng_rate,
+    "Mixed Keruing": mkeruing_rate, "Pure Keruing": pkeruing_rate
+}
+st.divider()
+
+# ============================================================
+# END OF PART 1 — paste Part 2 immediately below this line
+# ============================================================
+# ============================================================
+# Timber AI Assistant V27 — PART 2 of 3
+# FUNCTIONS: Gist helpers, calc engine, parser, UI utilities
+# Paste this SECOND, immediately after Part 1
+# ============================================================
+
+# ============================================================
+# GITHUB GIST HELPERS
+# ============================================================
+def gist_headers():
+    token = st.secrets.get("github_token", "")
+    return {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+
+def load_history():
+    gist_id = st.secrets.get("gist_id", "")
+    if not gist_id: return []
+    try:
+        r = requests.get(f"https://api.github.com/gists/{gist_id}",
+                         headers=gist_headers(), timeout=15)
+        if r.status_code == 200:
+            files = r.json().get("files", {})
+            if "timber_quotes.json" not in files: return []
+            raw = files["timber_quotes.json"]["content"]
+            if not raw or raw.strip() == "[]": return []
+            return json.loads(raw)
+        elif r.status_code == 401:
+            st.warning("⚠️ GitHub token expired. Please update in Streamlit secrets.")
+        elif r.status_code == 404:
+            st.warning("⚠️ Gist not found. Please check gist_id in Streamlit secrets.")
+    except Exception as e:
+        st.warning(f"⚠️ Could not load history: {str(e)}")
+    return []
+
+def save_history(history):
+    gist_id = st.secrets.get("gist_id", "")
+    token   = st.secrets.get("github_token", "")
+    if not gist_id: st.error("❌ gist_id not set in Streamlit secrets."); return False
+    if not token:   st.error("❌ github_token not set in Streamlit secrets."); return False
+    try:
+        r = requests.patch(
+            f"https://api.github.com/gists/{gist_id}",
+            headers=gist_headers(),
+            json={"files": {"timber_quotes.json": {"content": json.dumps(history, indent=2)}}},
+            timeout=15)
+        if r.status_code == 200: return True
+        elif r.status_code == 401: st.error("❌ GitHub token expired or invalid."); return False
+        elif r.status_code == 404: st.error("❌ Gist not found."); return False
+        else: st.error(f"❌ Could not save. Status: {r.status_code}"); return False
+    except Exception as e:
+        st.error(f"❌ Network error: {str(e)}"); return False
+
+def save_quote(customer, mobile, total, items, quote_text, cost_total=0, quote_type="Quote"):
+    history = load_history()
+    profit  = round(total - cost_total, 2)
+    margin  = round((profit / total * 100), 1) if total > 0 else 0
+    entry   = {
+        "id":       datetime.now().strftime("%Y%m%d_%H%M%S"),
+        "date":     datetime.now().strftime("%d %b %Y"),
+        "time":     datetime.now().strftime("%H:%M"),
+        "customer": customer.strip() if customer.strip() else "—",
+        "mobile":   mobile.strip()   if mobile.strip()   else "—",
+        "type":     quote_type,
+        "items": items, "total": total, "cost": cost_total,
+        "profit": profit, "margin": margin, "text": quote_text
+    }
+    history.insert(0, entry)
+    history = history[:200]
+    return save_history(history)
+
+def delete_quote(qid):
+    history = load_history()
+    save_history([q for q in history if q.get("id") != qid])
+
+# ============================================================
+# CALC FUNCTIONS
+# ============================================================
+def mm_to_inch(mm):
+    for inch, val in inch_to_mm.items():
+        if abs(mm - val) <= 6: return inch
+    return max(round(mm / 25.4), 1)
+
+def calc_from_mm(w_mm, h_mm, ft, rate):
+    """Core calc using mm dimensions directly. Returns (pcs_per_ton_raw, pcs_floor, price_per_pc)."""
+    m       = FT_TO_M[ft]
+    vol     = (w_mm / 1000) * (h_mm / 1000) * m
+    raw_pcs = 1 / (vol * TIMBER_DENSITY_KG_M3 / 1000)
+    pcs     = max(math.floor(raw_pcs), 1)
+    price   = round(rate / pcs, 2)
+    return round(raw_pcs, 3), pcs, price
+
+def is_keruing(species):
+    return species in ["Mixed Keruing", "Pure Keruing"]
+
+def build_reply(lines, total, is_timber=True, extra_note=""):
+    out = list(lines)
+    out.append(f"\nTotal : S${total:,.2f}")
+    out.append("\nTolerances:")
+    out.append("- Thickness/Width: +-1~2mm")
+    if is_timber:
+        out.append("- Length: +-25~50mm")
+    if extra_note:
+        out.append(extra_note)
+    out.append("\nDelivery / Self Collection:")
+    out.append("30 Kranji Loop (Blk A) #04-05")
+    out.append("TimMac @ Kranji S739570")
+    return "\n".join(out)
+
+# ============================================================
+# UI RENDER HELPERS
+# ============================================================
+def render_table(rows):
+    if not rows: return
+    headers = list(rows[0].keys())
+    html = '<table style="width:100%;border-collapse:collapse;font-size:13px">'
+    html += '<thead><tr>' + ''.join(
+        f'<th style="text-align:left;padding:6px 10px;border-bottom:2px solid #1D9E75;color:#555;font-weight:500">{h}</th>'
+        for h in headers) + '</tr></thead><tbody>'
+    for i, row in enumerate(rows):
+        bg = "#f9fdf9" if i % 2 == 0 else "white"
+        html += f'<tr style="background:{bg}">' + ''.join(
+            f'<td style="padding:6px 10px;border-bottom:0.5px solid #eee">{row[h]}</td>'
+            for h in headers) + '</tr>'
+    html += '</tbody></table>'
+    st.markdown(html, unsafe_allow_html=True)
+
+def render_staff_log(log_items, grand_total, cost_total):
+    profit = round(grand_total - cost_total, 2)
+    margin = round((profit / grand_total * 100), 1) if grand_total > 0 else 0
+    html = '<div class="staff-log"><div class="staff-log-header">Staff Calculation Log</div>'
+    for i, item in enumerate(log_items, 1):
+        warn    = '<span class="warn-chip">&#9888;&#65039; SMALL QTY &mdash; adjust price before sending</span>' if item.get("small_qty") else ""
+        grid    = "".join(f'<span class="log-label">{k}</span><span class="log-val">{v}</span>' for k, v in item["rows"].items())
+        moq_div = f'<div style="background:#FAEEDA;color:#854F0B;font-size:13px;font-weight:600;padding:4px 12px;border-radius:6px;margin-top:4px">&#9888;&#65039; MOQ APPLIED &mdash; {item.get("moq_note","")}</div>' if item.get("moq_flag") else ""
+        html += '<div class="log-item">'
+        html += f'<div class="log-item-head"><span class="log-num">{i}</span>{item["heading"]}</div>'
+        html += f'<div class="log-grid">{grid}<span class="log-label">Profit</span>'
+        html += f'<span class="log-profit">{item.get("profit_line","")} <span class="profit-chip">{item.get("margin_pct","")}</span>{warn}</span></div>'
+        html += moq_div + '</div>'
+    html += '<div class="log-total">'
+    html += f'<div class="log-total-label">Grand total &nbsp;&middot;&nbsp; {len(log_items)} item(s) &nbsp;&middot;&nbsp; Margin {margin}%</div>'
+    html += f'<div><span class="log-total-val">S${grand_total:,.2f}</span> <span class="profit-chip">Profit S${profit:,.2f}</span></div>'
+    html += '</div></div>'
+    st.markdown(html, unsafe_allow_html=True)
+
+# ============================================================
+# PARSER FUNCTIONS
+# ============================================================
+def detect_species(text):
+    t = text.lower().strip()
+    for k, v in SPECIES_MAP.items():
+        if k in t: return v
+    return None
+
+def is_word(s):
+    return bool(re.match(r'^[a-zA-Z\u4e00-\u9fff]+$', s))
+
+def normalize_to_mm(value, unit):
+    u = (unit or "").lower().strip()
+    if u in ["mm","毫米",""]:   return float(value)
+    if u in ["cm","厘米"]:       return float(value) * 10
+    if u in ["m","米"]:          return float(value) * 1000
+    if u in ["ft","feet","'"]:  return float(value) * 304.8
+    if u in ["in","inch",'"']: return float(value) * 25.4
+    return float(value)
+
+def classify_dim(val_mm):
+    if val_mm >= 600: return "length"
+    if val_mm >= 80:  return "width"
+    return "thickness"
+
+def extract_qty(text):
+    patterns = [
+        r"(?:qty|quantity)\s*[:\-]?\s*(\d+)",
+        r"(\d+)\s*(?:pcs|pieces|pc|支|条|块|根)",
+        r"(?:pcs|pieces|pc|支|条|块|根)\s*[:\-]?\s*(\d+)",
+        r"[xX×]\s*(\d+)\s*$",
+    ]
+    for p in patterns:
+        m = re.search(p, text, re.IGNORECASE)
+        if m: return int(m.group(1))
+    return None
+
+def parse_smart_text(text):
+    results = []
+    lines   = text.strip().split("\n")
+    cur_sp  = None
+    cur_thk = None
+    cur_wid = None
+
+    for line in lines:
+        sp = detect_species(line)
+        if sp: cur_sp = sp; break
+
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip(); i += 1
+        if not line: continue
+
+        sp = detect_species(line)
+        if sp: cur_sp = sp
+
+        parts = re.split(r"[\s,\t]+", line)
+
+        sp_from_parts = None
+        num_offset    = 1
+        if len(parts) >= 2 and is_word(parts[0]) and is_word(parts[1]):
+            candidate = detect_species(parts[0] + " " + parts[1])
+            if candidate:
+                sp_from_parts = candidate
+                num_offset    = 2
+        if not sp_from_parts and is_word(parts[0]):
+            sp_from_parts = detect_species(parts[0])
+            num_offset    = 1
+
+        if sp_from_parts and len(parts) >= num_offset + 4:
+            try:
+                thk = float(parts[num_offset])
+                wid = float(parts[num_offset + 1])
+                lm  = float(parts[num_offset + 2])
+                qty = int(float(parts[num_offset + 3]))
+                results.append({"species": sp_from_parts, "thk_mm": thk, "wid_mm": wid, "len_m": lm, "qty": qty})
+                cur_sp = sp_from_parts; cur_thk = thk; cur_wid = wid
+                continue
+            except: pass
+
+        labeled_pat     = r"(\d+\.?\d*)\s*(mm|cm|m|ft|in)?\s*[xX×]?\s*([LWHTDlwhtd])\b"
+        labeled_matches = re.findall(labeled_pat, line)
+        if len(labeled_matches) >= 2:
+            dims = {}
+            for val, unit, label in labeled_matches:
+                vmm = normalize_to_mm(val, unit or "mm"); lb = label.upper()
+                if lb == "L":              dims["length_mm"] = vmm
+                elif lb == "W":            dims["width_mm"]  = vmm
+                elif lb in ["H","T","D"]: dims["thk_mm"]    = vmm
+            if "length_mm" in dims and "width_mm" in dims:
+                dims.setdefault("thk_mm", min(dims["width_mm"], 100))
+                sp_use = detect_species(line) or cur_sp or "Kapur"
+                qty    = extract_qty(line)
+                if not qty and i < len(lines):
+                    qty = extract_qty(lines[i].strip()) or 1
+                    if qty > 1: i += 1
+                results.append({"species": sp_use, "thk_mm": dims["thk_mm"], "wid_mm": dims["width_mm"],
+                                 "len_m": round(dims["length_mm"] / 1000, 3), "qty": qty})
+                cur_thk = dims["thk_mm"]; cur_wid = dims["width_mm"]
+                continue
+
+        lq_all = re.findall(r"(\d{3,5})\s*[=:]\s*(\d+)\s*(?:支|条|块|pcs|pc|pieces)?", line)
+        if lq_all and cur_thk and cur_wid:
+            sp_use = detect_species(line) or cur_sp or "Kapur"; added = 0
+            for lstr, qstr in lq_all:
+                lmm = float(lstr)
+                if lmm < 200: continue
+                results.append({"species": sp_use, "thk_mm": cur_thk, "wid_mm": cur_wid,
+                                 "len_m": round(lmm / 1000, 3), "qty": int(qstr)})
+                added += 1
+            if added: continue
+
+        two_pat = r"^[^=:\d]*(\d+\.?\d*)\s*(mm|cm)?\s*[xX×]\s*(\d+\.?\d*)\s*(mm|cm)?[^=:\d]*$"
+        two_m   = re.match(two_pat, line)
+        if two_m:
+            v1 = normalize_to_mm(two_m.group(1), two_m.group(2) or "mm")
+            v2 = normalize_to_mm(two_m.group(3), two_m.group(4) or "mm")
+            cur_thk = min(v1, v2); cur_wid = max(v1, v2)
+            continue
+
+        three_pat = r"(\d+\.?\d*)\s*(mm|cm|m|ft)?\s*[xX×]\s*(\d+\.?\d*)\s*(mm|cm|m|ft)?\s*[xX×]\s*(\d+\.?\d*)\s*(mm|cm|m|ft)?"
+        three_m   = re.search(three_pat, line)
+        if three_m:
+            vals_mm = [
+                normalize_to_mm(three_m.group(1), three_m.group(2) or "mm"),
+                normalize_to_mm(three_m.group(3), three_m.group(4) or "mm"),
+                normalize_to_mm(three_m.group(5), three_m.group(6) or "mm"),
+            ]
+            sv        = sorted(zip(vals_mm, [classify_dim(v) for v in vals_mm]), key=lambda x: -x[0])
+            length_mm = next((v for v, c in sv if c == "length"),    sv[0][0])
+            width_mm  = next((v for v, c in sv if c == "width"),     sv[1][0])
+            thk_mm    = next((v for v, c in sv if c == "thickness"), sv[2][0])
+            sp_use    = detect_species(line) or cur_sp or "Kapur"
+            qty       = extract_qty(line) or 1
+            results.append({"species": sp_use, "thk_mm": thk_mm, "wid_mm": width_mm,
+                             "len_m": round(length_mm / 1000, 3), "qty": qty})
+            cur_thk = thk_mm; cur_wid = width_mm
+            continue
+
+        ch_m = re.search(r"(\d+\.?\d*)[×xX](\d+\.?\d*)\s+(\d+\.?\d*)米\s*(\d+)支", line)
+        if ch_m:
+            sp_use = detect_species(line) or cur_sp or "Kapur"
+            t = float(ch_m.group(1)); w = float(ch_m.group(2))
+            lm = float(ch_m.group(3)); qty = int(ch_m.group(4))
+            results.append({"species": sp_use, "thk_mm": min(t, w), "wid_mm": max(t, w), "len_m": lm, "qty": qty})
+            cur_thk = min(t, w); cur_wid = max(t, w)
+            continue
+
+        qty_only = extract_qty(line)
+        if qty_only and results and results[-1].get("qty") == 1:
+            results[-1]["qty"] = qty_only
+
+    return results
+
+def parsed_to_order_item(p, species_rate_map):
+    thk = p["thk_mm"]; wid = p["wid_mm"]; length_m = p["len_m"]; qty = p["qty"]; sp = p["species"]
+    if thk <= 0 or wid <= 0 or length_m <= 0:
+        raise ValueError(f"Invalid dimension: thk={thk}, wid={wid}, len={length_m}")
+    len_ft = round(length_m * 3.28084)
+    rate   = species_rate_map.get(sp, 3800)
+    # snap to nearest standard ft
+    snapped_ft = min(STANDARD_FT, key=lambda f: abs(f - len_ft))
+    raw, pcs, price = calc_from_mm(wid, thk, snapped_ft, rate)
+    size_text = f"{thk}mm x {wid}mm x {snapped_ft}ft"
+    return {
+        "species": sp, "size": size_text, "w_mm": wid, "h_mm": thk, "ft": snapped_ft,
+        "price": price, "qty": qty, "line_total": round(price * qty, 2),
+        "rate": rate, "pcs_per_ton": raw, "small_qty": qty < SMALL_QTY
+    }
+
+def parsed_to_odd_item(p, species_rate_map):
+    thk = p["thk_mm"]; wid = p["wid_mm"]; length_m = p["len_m"]; qty = p["qty"]; sp = p["species"]
+    if thk <= 0 or wid <= 0 or length_m <= 0:
+        raise ValueError(f"Invalid dimension: thk={thk}, wid={wid}, len={length_m}")
+    len_ft    = length_m * 3.28084
+    rate      = species_rate_map.get(sp, 3800)
+    vol       = (wid / 1000) * (thk / 1000) * length_m
+    raw       = 1 / (vol * TIMBER_DENSITY_KG_M3 / 1000)
+    pcs_floor = max(math.floor(raw), 1)
+    price     = round(rate / pcs_floor)
+    cust_size = f"{thk}mm x {wid}mm x {length_m}m"
+    return {
+        "species": sp, "cust_size": cust_size, "quote_size": cust_size, "price": price, "qty": qty,
+        "line_total": round(price * qty, 2), "rate": rate, "pcs_per_ton": round(raw, 4),
+        "pcs_floor": pcs_floor, "small_qty": qty < SMALL_QTY
+    }
+
+# ============================================================
+# END OF PART 2 — paste Part 3 immediately below this line
+# ============================================================
+# ============================================================
 # Timber AI Assistant V27 — PART 3 of 3
 # UI TABS: Quote Builder, Odd Size, Plywood, Suppliers, History
 # Paste this THIRD, immediately after Part 2
