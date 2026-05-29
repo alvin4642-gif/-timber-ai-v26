@@ -671,14 +671,16 @@ with tab_quote:
     ft_labels   = [f"{ft} ft  ({FT_TO_M[ft]} m)" for ft in STANDARD_FT]
 
     with st.form("add_timber_form", clear_on_submit=True):
-        fc1, fc2, fc3, fc4, fc5 = st.columns([2, 2, 2, 1, 1])
-        with fc1: f_sp   = st.selectbox("Species", SPECIES, key="f_sp")
-        with fc2: f_size = st.selectbox("Size (mm)", size_labels, key="f_size")
+        fc1, fc2, fc3 = st.columns([2, 2, 2])
+        with fc1: f_sp       = st.selectbox("Species", SPECIES, key="f_sp")
+        with fc2: f_size     = st.selectbox("Size (mm)", size_labels, key="f_size")
         with fc3: f_ft_label = st.selectbox("Length", ft_labels, key="f_ft")
-        with fc4: f_qty  = st.number_input("Qty", min_value=1, value=1, step=1, key="f_qty")
-        with fc5:
+        fq1, fq2 = st.columns([1, 3])
+        with fq1: f_qty = st.number_input("Qty (pcs)", min_value=1, value=1, step=1, key="f_qty")
+        with fq2:
             st.markdown("<br>", unsafe_allow_html=True)
-            add_btn = st.form_submit_button("+ Add", use_container_width=True)
+            add_btn = st.form_submit_button("+ Add Item", type="primary", use_container_width=True)
+        st.caption("💡 Press Enter after typing Qty, or click '+ Add Item'")
 
         if add_btn and f_size and f_ft_label:
             f_qty_int  = max(int(f_qty), 1)
@@ -777,7 +779,7 @@ with tab_quote:
             st.divider()
             st.subheader("Customer Reply (edit before sending)")
             edited_reply = st.text_area("", st.session_state.q_reply, height=350, key="cust_reply_q")
-            a1, a2, a3 = st.columns(3)
+            a1, a2, a3, a4 = st.columns(4)
             with a1:
                 st.download_button("📥 Download TXT", data=edited_reply,
                     file_name=f"quote_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
@@ -791,6 +793,11 @@ with tab_quote:
             with a3:
                 st.download_button("📋 Copy as TXT", data=edited_reply,
                     file_name="quote_copy.txt", mime="text/plain", use_container_width=True)
+            with a4:
+                if st.button("🗑️ Clear Quote", use_container_width=True, key="clear_reply_q"):
+                    st.session_state.order_items = []
+                    st.session_state.q_ready = False
+                    st.rerun()
     else:
         st.info("Add items above to build your order list.")
         if st.button("RESET ALL", use_container_width=True): reset_all()
