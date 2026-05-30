@@ -670,37 +670,32 @@ with tab_quote:
     size_labels = size_options_for_dropdown()
     ft_labels   = [f"{ft} ft  ({FT_TO_M[ft]} m)" for ft in STANDARD_FT]
 
-    with st.form("add_timber_form", clear_on_submit=False):
-        fc1, fc2, fc3, fc4, fc5 = st.columns([2, 2, 2, 1, 1])
-        with fc1: f_sp       = st.selectbox("Species", SPECIES, key="f_sp")
-        with fc2: f_size     = st.selectbox("Size (mm)", size_labels, key="f_size")
-        with fc3: f_ft_label = st.selectbox("Length", ft_labels, key="f_ft")
-        with fc4: f_qty      = st.number_input("Qty (pcs)", min_value=1, value=1, step=1, key="f_qty")
-        with fc5:
-            st.markdown("<br>", unsafe_allow_html=True)
-            add_btn = st.form_submit_button("+ Add", type="primary", use_container_width=True)
+    fc1, fc2, fc3, fc4, fc5 = st.columns([2, 2, 2, 1, 1])
+    with fc1: f_sp       = st.selectbox("Species", SPECIES, key="f_sp")
+    with fc2: f_size     = st.selectbox("Size (mm)", size_labels, key="f_size")
+    with fc3: f_ft_label = st.selectbox("Length", ft_labels, key="f_ft")
+    with fc4: f_qty      = st.number_input("Qty (pcs)", min_value=1, value=1, step=1, key="f_qty")
+    with fc5:
+        st.markdown("<br>", unsafe_allow_html=True)
+        add_btn = st.button("+ Add", type="primary", use_container_width=True, key="qb_add_btn")
 
-        if add_btn and f_size and f_ft_label:
-            # Read qty from session_state BEFORE deleting — this holds the typed value
-            f_qty_int  = max(int(st.session_state.get("f_qty", 1)), 1)
-            ft_val     = int(f_ft_label.split(" ")[0])
-            w_mm, h_mm, nom_w, nom_h = lookup_size(f_size)
-            rate       = species_rate[f_sp]
-            raw, pcs, price = calc_from_mm(w_mm, h_mm, ft_val, rate, nom_w, nom_h)
-            size_text  = f"{f_size} x {ft_val}ft"
-            st.session_state.order_items.append({
-                "species": f_sp, "size": size_text, "w_mm": w_mm, "h_mm": h_mm,
-                "nom_w": nom_w, "nom_h": nom_h, "ft": ft_val,
-                "price": price, "qty": f_qty_int, "line_total": round(price * f_qty_int, 2),
-                "rate": rate, "pcs_per_ton": raw, "small_qty": f_qty_int < SMALL_QTY
-            })
-            st.session_state.q_ready = False
-            # Delete key so next render resets number_input to value=1
-            if "f_qty" in st.session_state:
-                del st.session_state["f_qty"]
-            if "f_qty_val" in st.session_state:
-                del st.session_state["f_qty_val"]
-            st.rerun()
+    if add_btn:
+        f_qty_int  = max(int(st.session_state.get("f_qty", 1)), 1)
+        ft_val     = int(st.session_state.get("f_ft", ft_labels[0]).split(" ")[0])
+        f_size_val = st.session_state.get("f_size", size_labels[0])
+        f_sp_val   = st.session_state.get("f_sp", SPECIES[0])
+        w_mm, h_mm, nom_w, nom_h = lookup_size(f_size_val)
+        rate       = species_rate[f_sp_val]
+        raw, pcs, price = calc_from_mm(w_mm, h_mm, ft_val, rate, nom_w, nom_h)
+        size_text  = f"{f_size_val} x {ft_val}ft"
+        st.session_state.order_items.append({
+            "species": f_sp_val, "size": size_text, "w_mm": w_mm, "h_mm": h_mm,
+            "nom_w": nom_w, "nom_h": nom_h, "ft": ft_val,
+            "price": price, "qty": f_qty_int, "line_total": round(price * f_qty_int, 2),
+            "rate": rate, "pcs_per_ton": raw, "small_qty": f_qty_int < SMALL_QTY
+        })
+        st.session_state.q_ready = False
+        st.rerun()
 
     if st.session_state.order_items:
         n_items = len(st.session_state.order_items)
@@ -1142,18 +1137,18 @@ with tab_ply:
         profit_preview=round(p_sell_def-p_cost_def,2)
         margin_preview=round((profit_preview/p_sell_def*100),1) if p_sell_def>0 else 0
 
-        with st.form("ply_add_form",clear_on_submit=True):
-            fa1,fa2,fa3,fa4=st.columns([2,1,1,1])
-            with fa1:
-                p_sell_key=f"ply_sell_{p_grade}_{p_thk}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
-                p_sell_f=st.number_input("Selling Price (S$/sheet)",min_value=0.0,value=float(p_sell_def),step=0.5,format="%.2f",key=p_sell_key)
-            with fa2: p_qty_f=st.number_input("Qty (sheets)",min_value=1,value=1,step=1,key="ply_qty_form")
-            with fa3: st.markdown(f"<br><small>Default profit:<br>S${profit_preview}/sheet ({margin_preview}%)</small>",unsafe_allow_html=True)
-            with fa4: st.markdown("<br>",unsafe_allow_html=True); add_ply=st.form_submit_button("+ Add Plywood",type="primary",use_container_width=True)
-            st.caption("Press Enter or click '+ Add Plywood'.")
+        fa1,fa2,fa3,fa4=st.columns([2,1,1,1])
+        with fa1:
+            p_sell_key=f"ply_sell_{p_grade}_{p_thk}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
+            p_sell_f=st.number_input("Selling Price (S$/sheet)",min_value=0.0,value=float(p_sell_def),step=0.5,format="%.2f",key=p_sell_key)
+        with fa2: p_qty_f=st.number_input("Qty (sheets)",min_value=1,value=1,step=1,key="ply_qty_inp")
+        with fa3: st.markdown(f"<br><small>Default profit:<br>S${profit_preview}/sheet ({margin_preview}%)</small>",unsafe_allow_html=True)
+        with fa4: st.markdown("<br>",unsafe_allow_html=True); add_ply=st.button("+ Add Plywood",type="primary",use_container_width=True,key="ply_add_btn")
 
         if p_sell_def==0.0: st.warning("⚠️ Selling price is S$0.00 — check price table.")
         if add_ply:
+            p_qty_f = max(int(st.session_state.get("ply_qty_inp", 1)), 1)
+            p_sell_f = st.session_state.get(p_sell_key, p_sell_def)
             actual_qty=max(p_qty_f,moq); moq_flag=actual_qty>p_qty_f
             line_total=round(p_sell_f*actual_qty,2)
             st.session_state.ply_items.append({
