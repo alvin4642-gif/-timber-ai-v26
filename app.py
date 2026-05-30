@@ -848,7 +848,7 @@ with tab_odd:
         cwid_mm  = float(cwid_val)  * 25.4 if cwu == "inch" else float(cwid_val)
         sug = suggest_quote_size(cwid_mm, cthk_mm)
         if sug:
-            sug_w, sug_h, sug_lbl = sug
+            sug_w, sug_h, sug_lbl, _, _ = sug
             st.markdown(
                 f'<div style="background:var(--color-background-info);border:0.5px solid var(--color-border-tertiary);'
                 f'border-radius:var(--border-radius-md);padding:10px 16px;margin:10px 0;display:flex;align-items:center;gap:16px">'
