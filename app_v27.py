@@ -675,13 +675,13 @@ with tab_quote:
         with fc1: f_sp       = st.selectbox("Species", SPECIES, key="f_sp")
         with fc2: f_size     = st.selectbox("Size (mm)", size_labels, key="f_size")
         with fc3: f_ft_label = st.selectbox("Length", ft_labels, key="f_ft")
-        with fc4: f_qty      = st.number_input("Qty (pcs)", min_value=1, value=st.session_state.get("f_qty_val", 1), step=1, key="f_qty")
+        with fc4: f_qty      = st.number_input("Qty (pcs)", min_value=1, value=1, step=1, key="f_qty")
         with fc5:
             st.markdown("<br>", unsafe_allow_html=True)
             add_btn = st.form_submit_button("+ Add", type="primary", use_container_width=True)
 
         if add_btn and f_size and f_ft_label:
-            # Read directly from session_state — not cleared by form
+            # Read qty from session_state BEFORE deleting — this holds the typed value
             f_qty_int  = max(int(st.session_state.get("f_qty", 1)), 1)
             ft_val     = int(f_ft_label.split(" ")[0])
             w_mm, h_mm, nom_w, nom_h = lookup_size(f_size)
@@ -695,7 +695,11 @@ with tab_quote:
                 "rate": rate, "pcs_per_ton": raw, "small_qty": f_qty_int < SMALL_QTY
             })
             st.session_state.q_ready = False
-            st.session_state["f_qty_val"] = 1  # reset qty display to 1 after add
+            # Delete key so next render resets number_input to value=1
+            if "f_qty" in st.session_state:
+                del st.session_state["f_qty"]
+            if "f_qty_val" in st.session_state:
+                del st.session_state["f_qty_val"]
             st.rerun()
 
     if st.session_state.order_items:
