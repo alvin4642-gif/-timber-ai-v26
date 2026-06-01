@@ -80,65 +80,94 @@ TIMBER_DENSITY_KG_M3 = 706  # calibrated to trade standard: 7200 / (w_inch * h_i
 
 STANDARD_SIZES = [
     # (width_mm, thickness_mm, display_label, nom_w_inch, nom_h_inch)
-    # nom_w/h used for QB 7200 formula; ODD sizes use actual mm
+    # mm values = actual sawn trade sizes; nom inches = for 7200 formula
     # 1" group
-    (20,  20,  '20 x 20mm (1" x 1")',    1,  1),   # QB
+    (25,  25,  '25 x 25mm (1" x 1")',    1,  1),
     # 2" group
-    (43,  20,  '43 x 20mm (2" x 1")',    2,  1),   # QB
-    (43,  43,  '43 x 43mm (2" x 2")',    2,  2),   # QB
+    (51,  25,  '51 x 25mm (2" x 1")',    2,  1),
+    (51,  51,  '51 x 51mm (2" x 2")',    2,  2),
     # 3" group
-    (70,  20,  '70 x 20mm (3" x 1")',    3,  1),   # QB
-    (70,  43,  '70 x 43mm (3" x 2")',    3,  2),   # QB
-    (70,  70,  '70 x 70mm (3" x 3")',    3,  3),   # QB
+    (76,  25,  '76 x 25mm (3" x 1")',    3,  1),
+    (76,  51,  '76 x 51mm (3" x 2")',    3,  2),
+    (76,  76,  '76 x 76mm (3" x 3")',    3,  3),
     # 4" group
-    (93,  20,  '93 x 20mm (4" x 1")',    4,  1),   # QB
-    (93,  43,  '93 x 43mm (4" x 2")',    4,  2),   # QB
-    (93,  70,  '93 x 70mm (4" x 3")',    4,  3),   # QB
-    (93,  93,  '93 x 93mm (4" x 4")',    4,  4),   # QB
-    # 5" group — ODD SIZE only (no nominal, uses actual mm)
-    (117, 20,  '117 x 20mm (5" x 1")',   None, None),
-    (117, 43,  '117 x 43mm (5" x 2")',   None, None),
-    (117, 70,  '117 x 70mm (5" x 3")',   None, None),
-    (117, 93,  '117 x 93mm (5" x 4")',   None, None),
-    (117, 117, '117 x 117mm (5" x 5")',  None, None),
+    (102, 25,  '102 x 25mm (4" x 1")',   4,  1),
+    (102, 51,  '102 x 51mm (4" x 2")',   4,  2),
+    (102, 76,  '102 x 76mm (4" x 3")',   4,  3),
+    (102, 102, '102 x 102mm (4" x 4")',  4,  4),
+    # 5" group — ODD SIZE only
+    (127, 25,  '127 x 25mm (5" x 1")',   None, None),
+    (127, 51,  '127 x 51mm (5" x 2")',   None, None),
+    (127, 76,  '127 x 76mm (5" x 3")',   None, None),
+    (127, 102, '127 x 102mm (5" x 4")',  None, None),
+    (127, 127, '127 x 127mm (5" x 5")',  None, None),
     # 6" group
-    (143, 20,  '143 x 20mm (6" x 1")',   6,  1),   # QB
-    (143, 43,  '143 x 43mm (6" x 2")',   6,  2),   # QB
-    (143, 70,  '143 x 70mm (6" x 3")',   6,  3),   # QB
-    (143, 93,  '143 x 93mm (6" x 4")',   6,  4),   # QB
-    (143, 125, '143 x 125mm (6" x 5")',  6,  5),   # QB
-    (143, 143, '143 x 143mm (6" x 6")',  6,  6),   # QB
+    (152, 25,  '152 x 25mm (6" x 1")',   6,  1),
+    (152, 51,  '152 x 51mm (6" x 2")',   6,  2),
+    (152, 76,  '152 x 76mm (6" x 3")',   6,  3),
+    (152, 102, '152 x 102mm (6" x 4")',  6,  4),
+    (152, 127, '152 x 127mm (6" x 5")',  6,  5),
+    (152, 152, '152 x 152mm (6" x 6")',  6,  6),
     # 7" group — ODD SIZE only
-    (168, 20,  '168 x 20mm (7" x 1")',   None, None),
-    (168, 43,  '168 x 43mm (7" x 2")',   None, None),
-    (168, 70,  '168 x 70mm (7" x 3")',   None, None),
-    (168, 93,  '168 x 93mm (7" x 4")',   None, None),
-    (168, 143, '168 x 143mm (7" x 6")',  None, None),
-    (168, 168, '168 x 168mm (7" x 7")',  None, None),
+    (178, 25,  '178 x 25mm (7" x 1")',   None, None),
+    (178, 51,  '178 x 51mm (7" x 2")',   None, None),
+    (178, 76,  '178 x 76mm (7" x 3")',   None, None),
+    (178, 102, '178 x 102mm (7" x 4")',  None, None),
+    (178, 152, '178 x 152mm (7" x 6")',  None, None),
+    (178, 178, '178 x 178mm (7" x 7")',  None, None),
     # 8" group
-    (193, 20,  '193 x 20mm (8" x 1")',   8,  1),   # QB
-    (193, 43,  '193 x 43mm (8" x 2")',   8,  2),   # QB
-    (193, 70,  '193 x 70mm (8" x 3")',   8,  3),   # QB
-    (193, 93,  '193 x 93mm (8" x 4")',   8,  4),   # QB
+    (203, 25,  '203 x 25mm (8" x 1")',   8,  1),
+    (203, 51,  '203 x 51mm (8" x 2")',   8,  2),
+    (203, 76,  '203 x 76mm (8" x 3")',   8,  3),
+    (203, 102, '203 x 102mm (8" x 4")',  8,  4),
     # 10" group
-    (243, 20,  '243 x 20mm (10" x 1")',  10, 1),   # QB
-    (243, 43,  '243 x 43mm (10" x 2")',  10, 2),   # QB
-    (243, 70,  '243 x 70mm (10" x 3")',  10, 3),   # QB
+    (254, 25,  '254 x 25mm (10" x 1")',  10, 1),
+    (254, 51,  '254 x 51mm (10" x 2")',  10, 2),
+    (254, 76,  '254 x 76mm (10" x 3")',  10, 3),
     # 11" group — ODD SIZE only
-    (268, 20,  '268 x 20mm (11" x 1")',  None, None),
-    (268, 43,  '268 x 43mm (11" x 2")',  None, None),
-    (268, 70,  '268 x 70mm (11" x 3")',  None, None),
-    (268, 93,  '268 x 93mm (11" x 4")',  None, None),
-    (268, 143, '268 x 143mm (11" x 6")', None, None),
+    (279, 25,  '279 x 25mm (11" x 1")',  None, None),
+    (279, 51,  '279 x 51mm (11" x 2")',  None, None),
+    (279, 76,  '279 x 76mm (11" x 3")',  None, None),
+    (279, 102, '279 x 102mm (11" x 4")', None, None),
+    (279, 152, '279 x 152mm (11" x 6")', None, None),
     # 12" group
-    (293, 20,  '293 x 20mm (12" x 1")',  12, 1),   # QB
-    (293, 45,  '293 x 45mm (12" x 2")',  12, 2),   # QB
-    (293, 70,  '293 x 70mm (12" x 3")',  12, 3),   # QB
-    (293, 95,  '293 x 95mm (12" x 4")',  12, 4),   # QB
-    (293, 125, '293 x 125mm (12" x 5")', 12, 5),   # QB
-    (293, 145, '293 x 145mm (12" x 6")', 12, 6),   # QB
-    (293, 195, '293 x 195mm (12" x 8")', 12, 8),   # QB
+    (305, 25,  '305 x 25mm (12" x 1")',  12, 1),
+    (305, 51,  '305 x 51mm (12" x 2")',  12, 2),
+    (305, 76,  '305 x 76mm (12" x 3")',  12, 3),
+    (305, 102, '305 x 102mm (12" x 4")', 12, 4),
+    (305, 127, '305 x 127mm (12" x 5")', 12, 5),
+    (305, 152, '305 x 152mm (12" x 6")', 12, 6),
+    (305, 203, '305 x 203mm (12" x 8")', 12, 8),
 ]
+
+# Trade mm → nominal inch lookup (for odd size 7200 formula)
+TRADE_MM_TO_INCH = {
+    20:1, 25:1,
+    43:2, 45:2, 50:2, 51:2,
+    70:3, 75:3, 76:3,
+    93:4, 95:4, 100:4, 102:4,
+    117:5, 120:5, 125:5, 127:5,
+    143:6, 145:6, 150:6, 152:6,
+    168:7, 170:7, 175:7, 178:7,
+    193:8, 195:8, 200:8, 203:8,
+    218:9, 220:9, 225:9, 229:9,
+    243:10, 245:10, 250:10, 254:10,
+    268:11, 270:11, 275:11, 279:11,
+    293:12, 295:12, 300:12, 305:12,
+}
+
+def mm_to_nominal_inch(mm):
+    """Convert actual mm to nearest nominal trade inch."""
+    mm_int = int(round(mm))
+    if mm_int in TRADE_MM_TO_INCH:
+        return TRADE_MM_TO_INCH[mm_int]
+    closest = min(TRADE_MM_TO_INCH.keys(), key=lambda k: abs(k - mm_int))
+    return TRADE_MM_TO_INCH[closest]
+
+def m_to_nominal_ft(l_m):
+    """Round metres to nearest standard ft."""
+    ft = l_m * 3.28084
+    return min(STANDARD_FT, key=lambda f: abs(f - ft))
 
 # QB sizes only (exclude 5", 7", 11" odd groups)
 QB_SIZES = [s for s in STANDARD_SIZES if s[3] is not None]
@@ -377,17 +406,17 @@ def mm_to_inch(mm):
     return max(round(mm / 25.4), 1)
 
 def calc_from_mm(w_mm, h_mm, ft, rate, nom_w=None, nom_h=None):
-    """QB pricing: uses nominal inches if available (7200 formula), else actual mm."""
-    if nom_w and nom_h:
-        # QB path: 7200 / nom_w / nom_h / ft
-        raw_pcs = 7200 / nom_w / nom_h / ft
-    else:
-        # Odd size path: actual mm dimensions
-        m   = FT_TO_M[ft]
-        vol = (w_mm / 1000) * (h_mm / 1000) * m
-        raw_pcs = 1 / (vol * TIMBER_DENSITY_KG_M3 / 1000)
-    pcs   = max(math.floor(raw_pcs), 1)
-    price = math.ceil(rate / pcs)
+    """
+    Pricing always uses 7200 / nom_w / nom_h / ft.
+    QB: nom_w/nom_h passed directly from STANDARD_SIZES.
+    Odd size: nom_w/nom_h derived from mm_to_nominal_inch().
+    """
+    if nom_w is None or nom_h is None:
+        nom_w = mm_to_nominal_inch(w_mm)
+        nom_h = mm_to_nominal_inch(h_mm)
+    raw_pcs = 7200 / nom_w / nom_h / ft
+    pcs     = max(math.floor(raw_pcs), 1)
+    price   = math.ceil(rate / pcs)
     return round(raw_pcs, 3), pcs, price
 
 def is_keruing(species):
@@ -619,12 +648,9 @@ def parsed_to_odd_item(p, species_rate_map):
     thk = p["thk_mm"]; wid = p["wid_mm"]; length_m = p["len_m"]; qty = p["qty"]; sp = p["species"]
     if thk <= 0 or wid <= 0 or length_m <= 0:
         raise ValueError(f"Invalid dimension: thk={thk}, wid={wid}, len={length_m}")
-    len_ft    = length_m * 3.28084
     rate      = species_rate_map.get(sp, 3800)
-    vol       = (wid / 1000) * (thk / 1000) * length_m
-    raw       = 1 / (vol * TIMBER_DENSITY_KG_M3 / 1000)
-    pcs_floor = max(math.floor(raw), 1)
-    price     = math.ceil(rate / pcs_floor)
+    ft        = m_to_nominal_ft(length_m)
+    raw, pcs_floor, price = calc_from_mm(wid, thk, ft, rate)
     cust_size = f"{thk}mm x {wid}mm x {length_m}m"
     return {
         "species": sp, "cust_size": cust_size, "quote_size": cust_size, "price": price, "qty": qty,
@@ -952,14 +978,13 @@ with tab_odd:
 
     # Live price preview
     if qw_mm and qh_mm and q_len_m_use:
-        vol     = (qw_mm / 1000) * (qh_mm / 1000) * q_len_m_use
-        raw_pcs = 1 / (vol * TIMBER_DENSITY_KG_M3 / 1000)
-        pcs_fl  = max(math.floor(raw_pcs), 1)
-        price_preview = math.ceil(odd_rate / pcs_fl)
-        line_preview  = round(price_preview * st.session_state.odd_qty, 2)
+        ft_for_calc = m_to_nominal_ft(q_len_m_use) if selected_qft is None else selected_qft
+        raw_pcs, pcs_fl, price_preview = calc_from_mm(qw_mm, qh_mm, ft_for_calc, odd_rate)
+        line_preview = round(price_preview * st.session_state.odd_qty, 2)
+        nom_w_disp = mm_to_nominal_inch(qw_mm); nom_h_disp = mm_to_nominal_inch(qh_mm)
         st.caption(
             f"Preview: {quote_size_str}  →  "
-            f"{round(raw_pcs, 2)} pcs/ton (floor {pcs_fl})  →  "
+            f"7200/{nom_w_disp}/{nom_h_disp}/{ft_for_calc}ft = {round(raw_pcs, 2)} pcs/ton (floor {pcs_fl})  →  "
             f"**S${price_preview}/pc × {st.session_state.odd_qty} = S${line_preview:,.2f}**"
         )
 
@@ -974,11 +999,9 @@ with tab_odd:
                     if ctu == "inch"
                     else f"{cthk}mm x {cwid}mm x {clen}{clu}"
                 )
-                vol2    = (qw_mm / 1000) * (qh_mm / 1000) * q_len_m_use
-                raw2    = 1 / (vol2 * TIMBER_DENSITY_KG_M3 / 1000)
-                pcs_fl2 = max(math.floor(raw2), 1)
-                price2  = math.ceil(odd_rate / pcs_fl2)
-                line_tot2 = round(price2 * st.session_state.odd_qty, 2)
+                ft_for_add  = m_to_nominal_ft(q_len_m_use) if selected_qft is None else selected_qft
+                raw2, pcs_fl2, price2 = calc_from_mm(qw_mm, qh_mm, ft_for_add, odd_rate)
+                line_tot2   = round(price2 * st.session_state.odd_qty, 2)
                 st.session_state.odd_items.append({
                     "species":     st.session_state.odd_sp,
                     "cust_size":   cust_size,
