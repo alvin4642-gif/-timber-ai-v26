@@ -190,17 +190,24 @@ def lookup_size(label):
     return None, None, None, None
 
 def suggest_quote_size(cust_w_mm, cust_h_mm):
+    """Find nearest size where PLANED dimensions >= customer dimensions."""
+    import re
+    def planed_dims(lbl):
+        m = re.match(r'(\d+)\s*x\s*(\d+)mm', lbl)
+        return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+
     best = None; best_dist = float('inf')
     for entry in ODD_SIZES:
-        w, h = entry[0], entry[1]
-        if w >= cust_w_mm and h >= cust_h_mm:
-            dist = (w - cust_w_mm) + (h - cust_h_mm)
+        pw, ph = planed_dims(entry[2])
+        if pw >= cust_w_mm and ph >= cust_h_mm:
+            dist = (pw - cust_w_mm) + (ph - cust_h_mm)
             if dist < best_dist:
                 best_dist = dist; best = entry
     if best is None:
+        # fallback: nearest by planed total distance
         for entry in ODD_SIZES:
-            w, h = entry[0], entry[1]
-            dist = abs(w - cust_w_mm) + abs(h - cust_h_mm)
+            pw, ph = planed_dims(entry[2])
+            dist = abs(pw - cust_w_mm) + abs(ph - cust_h_mm)
             if dist < best_dist:
                 best_dist = dist; best = entry
     return best
@@ -874,18 +881,32 @@ with tab_odd:
         cthk_mm = float(cthk_val) * 25.4 if ctu == "inch" else float(cthk_val)
         cwid_mm  = float(cwid_val)  * 25.4 if cwu == "inch" else float(cwid_val)
         sug = suggest_quote_size(cwid_mm, cthk_mm)
+
+        # Suggest nearest standard ft from customer length
+        clen_val = st.session_state.odd_clen
+        clu      = st.session_state.odd_clu
+        if clen_val:
+            clen_m   = float(clen_val) if clu == "m" else float(clen_val) * 0.3048
+            sug_ft   = m_to_nominal_ft(clen_m)
+        else:
+            sug_ft   = 8  # default
+
         if sug:
             sug_w, sug_h, sug_lbl, _, _ = sug
+            sug_full = f"{sug_lbl} × {sug_ft}ft ({FT_TO_M[sug_ft]}m)"
             st.markdown(
                 f'<div style="background:var(--color-background-info);border:0.5px solid var(--color-border-tertiary);'
-                f'border-radius:var(--border-radius-md);padding:10px 16px;margin:10px 0;display:flex;align-items:center;gap:16px">'
-                f'<span style="font-size:13px;color:var(--color-text-secondary)">💡 Suggested quote size:</span>'
-                f'<span style="font-family:var(--font-mono);font-weight:500;font-size:14px;color:var(--color-text-primary)">{sug_lbl}</span>'
-                f'</div>',
+                f'border-radius:var(--border-radius-md);padding:10px 16px;margin:10px 0">'
+                f'<div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:4px">💡 Suggested quote size</div>'
+                f'<div style="font-family:var(--font-mono);font-weight:600;font-size:15px;color:var(--color-text-primary)">{sug_full}</div>'
+                f'<div style="font-size:11px;color:var(--color-text-secondary);margin-top:3px">'
+                f'Sawn {sug_w}×{sug_h}mm ≥ customer {int(cwid_mm)}×{int(cthk_mm)}mm &nbsp;·&nbsp; {sug_ft}ft nearest to customer {clen_val}{clu if clen_val else ""}'
+                f'</div></div>',
                 unsafe_allow_html=True
             )
-            if st.button(f"✅ Accept suggestion — use {sug_lbl}", key="odd_accept_suggest"):
+            if st.button(f"✅ Accept — {sug_full}", key="odd_accept_suggest"):
                 st.session_state.odd_qsize_label = sug_lbl
+                st.session_state.odd_qft = sug_ft
                 st.rerun()
 
     st.markdown("**② Your Quote Size** — select from dropdown or type freely (used for pricing)")
