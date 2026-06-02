@@ -907,10 +907,9 @@ with tab_odd:
             if st.button(f"✅ Accept — {sug_full}", key="odd_accept_suggest"):
                 st.session_state.odd_qsize_label = sug_lbl
                 st.session_state.odd_qft = sug_ft
-                # Clear selectbox keys so index= is respected on rerun
-                for k in ["odd_qsize_sel", "odd_qft_sel"]:
-                    if k in st.session_state:
-                        del st.session_state[k]
+                # Set selectbox keys directly — this is what Streamlit actually reads
+                st.session_state["odd_qsize_sel"] = sug_lbl
+                st.session_state["odd_qft_sel"] = f"{sug_ft} ft  ({FT_TO_M[sug_ft]} m)"
                 st.rerun()
 
     st.markdown("**② Your Quote Size** — select from dropdown or type freely (used for pricing)")
@@ -939,24 +938,20 @@ with tab_odd:
     st.session_state.odd_qmode = "dropdown" if "Dropdown" in mode else "free"
 
     # Default index for length dropdown
-    qft_default_idx = STANDARD_FT.index(st.session_state.odd_qft) if st.session_state.odd_qft in STANDARD_FT else 1
+    # selectbox keys drive dropdown values directly via session state
 
     if st.session_state.odd_qmode == "dropdown":
         # Default index for quote size dropdown
-        qsize_default_idx = 0
-        if st.session_state.odd_qsize_label and st.session_state.odd_qsize_label in odd_all_labels:
-            qsize_default_idx = odd_all_labels.index(st.session_state.odd_qsize_label)
-
         qd1, qd2 = st.columns([3, 2])
         with qd1:
             selected_qsize = st.selectbox(
                 "Quote Size (thickness × width)",
-                odd_all_labels, index=qsize_default_idx, key="odd_qsize_sel"
+                odd_all_labels, key="odd_qsize_sel"
             )
             st.session_state.odd_qsize_label = selected_qsize
         with qd2:
             selected_qft_label = st.selectbox(
-                "Quote Length", ft_labels_odd, index=qft_default_idx, key="odd_qft_sel"
+                "Quote Length", ft_labels_odd, key="odd_qft_sel"
             )
             selected_qft = int(selected_qft_label.split(" ")[0])
             st.session_state.odd_qft = selected_qft
