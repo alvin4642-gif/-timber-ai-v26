@@ -907,6 +907,10 @@ with tab_odd:
             if st.button(f"✅ Accept — {sug_full}", key="odd_accept_suggest"):
                 st.session_state.odd_qsize_label = sug_lbl
                 st.session_state.odd_qft = sug_ft
+                # Clear selectbox keys so index= is respected on rerun
+                for k in ["odd_qsize_sel", "odd_qft_sel"]:
+                    if k in st.session_state:
+                        del st.session_state[k]
                 st.rerun()
 
     st.markdown("**② Your Quote Size** — select from dropdown or type freely (used for pricing)")
