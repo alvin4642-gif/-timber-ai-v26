@@ -880,7 +880,7 @@ with tab_odd:
         ctu = st.session_state.odd_ctu; cwu = st.session_state.odd_cwu
         cthk_mm = float(cthk_val) * 25.4 if ctu == "inch" else float(cthk_val)
         cwid_mm  = float(cwid_val)  * 25.4 if cwu == "inch" else float(cwid_val)
-        sug = suggest_quote_size(cwid_mm, cthk_mm)
+        sug = suggest_quote_size(cthk_mm, cwid_mm)
 
         # Suggest nearest standard ft from customer length
         clen_val = st.session_state.odd_clen
@@ -900,7 +900,7 @@ with tab_odd:
                 f'<div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:4px">💡 Suggested quote size</div>'
                 f'<div style="font-family:var(--font-mono);font-weight:600;font-size:15px;color:var(--color-text-primary)">{sug_full}</div>'
                 f'<div style="font-size:11px;color:var(--color-text-secondary);margin-top:3px">'
-                f'Sawn {sug_w}×{sug_h}mm ≥ customer {int(cwid_mm)}×{int(cthk_mm)}mm &nbsp;·&nbsp; {sug_ft}ft nearest to customer {clen_val}{clu if clen_val else ""}'
+                f'Planed {sug_w}×{sug_h}mm ≥ customer {int(cthk_mm)}×{int(cwid_mm)}mm &nbsp;·&nbsp; {sug_ft}ft nearest to customer {clen_val}{clu if clen_val else ""}'
                 f'</div></div>',
                 unsafe_allow_html=True
             )
@@ -1392,4 +1392,4 @@ with tab_hist:
 # FOOTER
 # ============================================================
 st.markdown("---")
-st.caption("Timber AI Assistant V27  ·  ALVIN  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
+st.caption("Timber AI Assistant V27  ·  PLONY Industries  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
