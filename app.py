@@ -908,8 +908,6 @@ with tab_odd:
             if st.button(f"✅ Accept — {sug_full}", key="odd_accept_suggest"):
                 st.session_state.odd_qsize_label = sug_lbl
                 st.session_state.odd_qft = sug_ft
-                # Increment counter → forces new widget key → index= works on fresh instance
-                st.session_state.odd_accept_count += 1
                 st.rerun()
 
     st.markdown("**② Your Quote Size** — select from dropdown or type freely (used for pricing)")
@@ -943,7 +941,6 @@ with tab_odd:
     if st.session_state.odd_qmode == "dropdown":
         qd1, qd2 = st.columns([3, 2])
 
-        _ac = st.session_state.odd_accept_count  # changes on Accept → new widget instance
         _qsize_idx = 0
         if st.session_state.get("odd_qsize_label") in odd_all_labels:
             _qsize_idx = odd_all_labels.index(st.session_state.odd_qsize_label)
@@ -954,17 +951,17 @@ with tab_odd:
             _ft_labels_idx = ft_labels_odd.index(_sug_ft_str)
 
         with qd1:
+            # No key= — index= fully controls the displayed value
             selected_qsize = st.selectbox(
                 "Quote Size (thickness × width)",
-                odd_all_labels, index=_qsize_idx,
-                key=f"odd_qsize_sel_{_ac}"
+                odd_all_labels, index=_qsize_idx
             )
             st.session_state.odd_qsize_label = selected_qsize
 
         with qd2:
+            # No key= — index= fully controls the displayed value
             selected_qft_label = st.selectbox(
-                "Quote Length", ft_labels_odd, index=_ft_labels_idx,
-                key=f"odd_qft_sel_{_ac}"
+                "Quote Length", ft_labels_odd, index=_ft_labels_idx
             )
             selected_qft = int(selected_qft_label.split(" ")[0])
             st.session_state.odd_qft = selected_qft
