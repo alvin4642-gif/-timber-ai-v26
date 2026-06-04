@@ -166,9 +166,11 @@ def mm_to_nominal_inch(mm):
     return TRADE_MM_TO_INCH[closest]
 
 def m_to_nominal_ft(l_m):
-    """Round metres to nearest standard ft."""
-    ft = l_m * 3.28084
-    return min(STANDARD_FT, key=lambda f: abs(f - ft))
+    """Return smallest standard ft whose length >= customer length (ceiling, not nearest)."""
+    for ft in STANDARD_FT:
+        if FT_TO_M[ft] >= l_m - 0.05:  # 50mm tolerance
+            return ft
+    return STANDARD_FT[-1]
 
 # QB sizes only (exclude 5", 7", 11" odd groups)
 QB_SIZES = [s for s in STANDARD_SIZES if s[3] is not None]
@@ -189,25 +191,30 @@ def lookup_size(label):
             return entry[0], entry[1], entry[3], entry[4]
     return None, None, None, None
 
-def suggest_quote_size(cust_w_mm, cust_h_mm):
-    """Find nearest size where PLANED dimensions >= customer dimensions."""
+def suggest_quote_size(cust_a_mm, cust_b_mm):
+    """Find nearest planed size >= customer dims. Sorts both sides so
+    thickness/width entry order doesn't matter."""
     import re
     def planed_dims(lbl):
         m = re.match(r'(\d+)\s*x\s*(\d+)mm', lbl)
         return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
 
+    cust_big = max(cust_a_mm, cust_b_mm)
+    cust_sml = min(cust_a_mm, cust_b_mm)
+
     best = None; best_dist = float('inf')
     for entry in ODD_SIZES:
         pw, ph = planed_dims(entry[2])
-        if pw >= cust_w_mm and ph >= cust_h_mm:
-            dist = (pw - cust_w_mm) + (ph - cust_h_mm)
+        p_big = max(pw, ph); p_sml = min(pw, ph)
+        if p_big >= cust_big and p_sml >= cust_sml:
+            dist = (p_big - cust_big) + (p_sml - cust_sml)
             if dist < best_dist:
                 best_dist = dist; best = entry
     if best is None:
-        # fallback: nearest by planed total distance
         for entry in ODD_SIZES:
             pw, ph = planed_dims(entry[2])
-            dist = abs(pw - cust_w_mm) + abs(ph - cust_h_mm)
+            p_big = max(pw, ph); p_sml = min(pw, ph)
+            dist = abs(p_big - cust_big) + abs(p_sml - cust_sml)
             if dist < best_dist:
                 best_dist = dist; best = entry
     return best
