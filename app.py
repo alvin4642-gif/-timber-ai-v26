@@ -282,10 +282,11 @@ _defaults = {
     "odd_qthk": None, "odd_qwid": None, "odd_qlen": None,
     "odd_ctu": "mm", "odd_cwu": "mm", "odd_clu": "m",
     "odd_sp":  "Kapur",
-    "odd_qsize_label": None,   # selected quote size label from dropdown
-    "odd_qft": 8,              # selected quote length ft
-    "odd_suggest": None,       # suggested quote size label
-    "odd_accept_count": 0,     # incremented on Accept to force fresh widget key
+    "odd_qsize_label": None,
+    "odd_qft": 8,
+    "odd_suggest": None,
+    "odd_accept_count": 0,
+    "odd_just_accepted": False,
     "odd_qty": 1,
     "cust_name": "", "cust_mobile": "",
     "q_ready":   False, "q_reply":   "", "q_total":   0.0, "q_cost":   0.0, "q_nitem": 0, "q_log":   [],
@@ -906,8 +907,12 @@ with tab_odd:
                 unsafe_allow_html=True
             )
             if st.button(f"✅ Accept — {sug_full}", key="odd_accept_suggest"):
-                st.session_state.odd_qsize_label = sug_lbl
-                st.session_state.odd_qft = sug_ft
+                st.session_state.odd_qsize_label   = sug_lbl
+                st.session_state.odd_qft           = sug_ft
+                st.session_state.odd_just_accepted = True
+                # Write directly into widget keys before rerun
+                st.session_state["_qsize_widget"]  = sug_lbl
+                st.session_state["_qft_widget"]    = f"{sug_ft} ft  ({FT_TO_M[sug_ft]} m)"
                 st.rerun()
 
     st.markdown("**② Your Quote Size** — select from dropdown or type freely (used for pricing)")
@@ -941,30 +946,30 @@ with tab_odd:
     if st.session_state.odd_qmode == "dropdown":
         qd1, qd2 = st.columns([3, 2])
 
-        _qsize_idx = 0
-        if st.session_state.get("odd_qsize_label") in odd_all_labels:
-            _qsize_idx = odd_all_labels.index(st.session_state.odd_qsize_label)
-
-        _ft_labels_idx = 0
-        _sug_ft_str = f"{st.session_state.odd_qft} ft  ({FT_TO_M.get(st.session_state.odd_qft, 2.4)} m)"
-        if _sug_ft_str in ft_labels_odd:
-            _ft_labels_idx = ft_labels_odd.index(_sug_ft_str)
+        # Initialise widget keys if not set
+        if "_qsize_widget" not in st.session_state:
+            st.session_state["_qsize_widget"] = odd_all_labels[0]
+        if "_qft_widget" not in st.session_state:
+            st.session_state["_qft_widget"] = ft_labels_odd[1]  # 8ft default
 
         with qd1:
-            # No key= — index= fully controls the displayed value
             selected_qsize = st.selectbox(
                 "Quote Size (thickness × width)",
-                odd_all_labels, index=_qsize_idx
+                odd_all_labels,
+                key="_qsize_widget"
             )
             st.session_state.odd_qsize_label = selected_qsize
 
         with qd2:
-            # No key= — index= fully controls the displayed value
             selected_qft_label = st.selectbox(
-                "Quote Length", ft_labels_odd, index=_ft_labels_idx
+                "Quote Length", ft_labels_odd,
+                key="_qft_widget"
             )
             selected_qft = int(selected_qft_label.split(" ")[0])
             st.session_state.odd_qft = selected_qft
+
+        # Clear just_accepted flag after render
+        st.session_state.odd_just_accepted = False
 
         # Resolve mm dims from dropdown label — odd size ALWAYS uses actual mm
         qw_mm, qh_mm, _, _ = lookup_size(selected_qsize)
