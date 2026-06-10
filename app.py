@@ -305,8 +305,16 @@ for _k, _v in _defaults.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
 
+DEFAULT_RATES = {
+    "r_kapur": 3800, "r_balau": 5500, "r_cheng": 6000,
+    "r_mker": 650,   "r_pker": 1000,
+}
+
 def reset_all():
     for k in list(st.session_state.keys()): del st.session_state[k]
+    # Restore default rates explicitly
+    for k, v in DEFAULT_RATES.items():
+        st.session_state[k] = v
     st.rerun()
 
 # ============================================================
@@ -1414,4 +1422,4 @@ with tab_hist:
 # FOOTER
 # ============================================================
 st.markdown("---")
-st.caption("Timber AI Assistant V27  ·  ALVIN  ·  Prices in SGD  ·  30 sizes · 6~22ft")
+st.caption("Timber AI Assistant V27  ·  PLONY Industries  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
