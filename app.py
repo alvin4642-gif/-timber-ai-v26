@@ -74,8 +74,9 @@ PLY_GRADES = [
 # Format: (width_mm, height_mm, nominal_inch_label)
 # pcs/ton calculated live from dimensions; no hardcoded pcs table needed.
 # ============================================================
-STANDARD_FT  = [6, 8, 10, 12, 14, 16, 18, 20, 22]
-FT_TO_M      = {6:1.8, 8:2.4, 10:3.0, 12:3.6, 14:4.2, 16:4.8, 18:5.4, 20:6.0, 22:6.6}
+STANDARD_FT  = list(range(1, 23))  # 1ft to 22ft — covers all odd lengths
+FT_TO_M      = {ft: round(ft * 0.3048, 4) for ft in STANDARD_FT}  # exact metric
+QB_FT        = [6, 8, 10, 12, 14, 16, 18, 20, 22]  # standard QB lengths only
 TIMBER_DENSITY_KG_M3 = 706  # calibrated to trade standard: 7200 / (w_inch * h_inch * l_ft)
 
 STANDARD_SIZES = [
@@ -166,9 +167,10 @@ def mm_to_nominal_inch(mm):
     return TRADE_MM_TO_INCH[closest]
 
 def m_to_nominal_ft(l_m):
-    """Return smallest standard ft whose length >= customer length (ceiling, not nearest)."""
+    """Return smallest ft whose metric length >= customer length (ceiling).
+    Covers all 1-22ft so odd lengths like 1.5m=5ft, 2.1m=7ft work correctly."""
     for ft in STANDARD_FT:
-        if FT_TO_M[ft] >= l_m - 0.05:  # 50mm tolerance
+        if FT_TO_M[ft] >= l_m - 0.05:
             return ft
     return STANDARD_FT[-1]
 
@@ -719,7 +721,7 @@ with tab_quote:
     st.caption("Select species, size and length from dropdowns. Rates above update price automatically.")
 
     size_labels = size_options_for_dropdown()
-    ft_labels   = [f"{ft} ft  ({FT_TO_M[ft]} m)" for ft in STANDARD_FT]
+    ft_labels   = [f"{ft} ft  ({FT_TO_M[ft]} m)" for ft in QB_FT]
 
     fc1, fc2, fc3, fc4, fc5 = st.columns([2, 2, 2, 1, 1])
     with fc1: f_sp       = st.selectbox("Species", SPECIES, key="f_sp")
@@ -965,7 +967,7 @@ with tab_odd:
         if "_qsize_widget" not in st.session_state:
             st.session_state["_qsize_widget"] = odd_all_labels[0]
         if "_qft_widget" not in st.session_state:
-            st.session_state["_qft_widget"] = ft_labels_odd[1]  # 8ft default
+            st.session_state["_qft_widget"] = f"8 ft  ({FT_TO_M[8]} m)"  # 8ft default
 
         with qd1:
             selected_qsize = st.selectbox(
@@ -1422,4 +1424,4 @@ with tab_hist:
 # FOOTER
 # ============================================================
 st.markdown("---")
-st.caption("Timber AI Assistant V27  ·  PLONY Industries  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
+st.caption("Timber AI Assistant V27  ·  Alvin ·  Prices in SGD  ·  30 sizes · 6~22ft ")
