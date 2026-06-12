@@ -1208,12 +1208,13 @@ with tab_ply:
         if add_ply:
             p_qty_f = max(int(st.session_state.get("ply_qty_inp", 1)), 1)
             p_sell_f = st.session_state.get(p_sell_key, p_sell_def)
+            p_sell_rounded = ceil_10cents(p_sell_f)
             actual_qty=max(p_qty_f,moq); moq_flag=actual_qty>p_qty_f
-            line_total=round(p_sell_f*actual_qty,2)
+            line_total=round(p_sell_rounded*actual_qty,2)
             st.session_state.ply_items.append({
-                "grade":p_grade,"thk":p_thk,"sell":p_sell_f,"cost":p_cost_def,
+                "grade":p_grade,"thk":p_thk,"sell":p_sell_f,"sell_rounded":p_sell_rounded,"cost":p_cost_def,
                 "qty":p_qty_f,"actual_qty":actual_qty,"moq_flag":moq_flag,
-                "line_total":line_total,"profit_ps":round(p_sell_f-p_cost_def,2)
+                "line_total":line_total,"profit_ps":round(p_sell_rounded-p_cost_def,2)
             })
             st.session_state.ply_ready=False; st.rerun()
 
@@ -1263,8 +1264,8 @@ with tab_ply:
                         "profit_line":f"S${profit_total:,.2f}","margin_pct":f"{margin_pct}%","small_qty":False,
                         "moq_flag":item["moq_flag"],"moq_note":f"min {item['actual_qty']} sheets (requested {item['qty']})"
                     })
-                    cl_price = ceil_10cents(item['sell'])
-                    cl=f"{item['grade']} plywood {item['thk']}mm @ S${cl_price:.2f}/sheet x {item['actual_qty']} = S${round(cl_price * item['actual_qty'],2):,.2f}{moq_note_txt}"
+                    cl_price = item.get('sell_rounded', ceil_10cents(item['sell']))
+                    cl=f"{item['grade']} plywood {item['thk']}mm @ S${cl_price:.2f}/sheet x {item['actual_qty']} = S${item['line_total']:,.2f}{moq_note_txt}"
                     if "Fire Retardant" in item['grade']:
                         cl+="\n  * Plywood may/will be wet & may/will have some powder when dried."
                     ply_reply.append(cl)
