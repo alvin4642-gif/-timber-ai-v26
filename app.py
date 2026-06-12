@@ -74,9 +74,8 @@ PLY_GRADES = [
 # Format: (width_mm, height_mm, nominal_inch_label)
 # pcs/ton calculated live from dimensions; no hardcoded pcs table needed.
 # ============================================================
-STANDARD_FT  = list(range(1, 23))  # 1ft to 22ft — covers all odd lengths
-FT_TO_M      = {ft: round(ft * 0.3048, 4) for ft in STANDARD_FT}  # exact metric
-QB_FT        = [6, 8, 10, 12, 14, 16, 18, 20, 22]  # standard QB lengths only
+STANDARD_FT  = [6, 8, 10, 12, 14, 16, 18, 20, 22]
+FT_TO_M      = {6:1.8, 8:2.4, 10:3.0, 12:3.6, 14:4.2, 16:4.8, 18:5.4, 20:6.0, 22:6.6}
 TIMBER_DENSITY_KG_M3 = 706  # calibrated to trade standard: 7200 / (w_inch * h_inch * l_ft)
 
 STANDARD_SIZES = [
@@ -167,12 +166,9 @@ def mm_to_nominal_inch(mm):
     return TRADE_MM_TO_INCH[closest]
 
 def m_to_nominal_ft(l_m):
-    """Return smallest ft whose metric length >= customer length (ceiling).
-    Covers all 1-22ft so odd lengths like 1.5m=5ft, 2.1m=7ft work correctly."""
-    for ft in STANDARD_FT:
-        if FT_TO_M[ft] >= l_m - 0.05:
-            return ft
-    return STANDARD_FT[-1]
+    """Round metres to nearest standard ft."""
+    ft = l_m * 3.28084
+    return min(STANDARD_FT, key=lambda f: abs(f - ft))
 
 # QB sizes only (exclude 5", 7", 11" odd groups)
 QB_SIZES = [s for s in STANDARD_SIZES if s[3] is not None]
@@ -193,30 +189,25 @@ def lookup_size(label):
             return entry[0], entry[1], entry[3], entry[4]
     return None, None, None, None
 
-def suggest_quote_size(cust_a_mm, cust_b_mm):
-    """Find nearest planed size >= customer dims. Sorts both sides so
-    thickness/width entry order doesn't matter."""
+def suggest_quote_size(cust_w_mm, cust_h_mm):
+    """Find nearest size where PLANED dimensions >= customer dimensions."""
     import re
     def planed_dims(lbl):
         m = re.match(r'(\d+)\s*x\s*(\d+)mm', lbl)
         return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
 
-    cust_big = max(cust_a_mm, cust_b_mm)
-    cust_sml = min(cust_a_mm, cust_b_mm)
-
     best = None; best_dist = float('inf')
     for entry in ODD_SIZES:
         pw, ph = planed_dims(entry[2])
-        p_big = max(pw, ph); p_sml = min(pw, ph)
-        if p_big >= cust_big and p_sml >= cust_sml:
-            dist = (p_big - cust_big) + (p_sml - cust_sml)
+        if pw >= cust_w_mm and ph >= cust_h_mm:
+            dist = (pw - cust_w_mm) + (ph - cust_h_mm)
             if dist < best_dist:
                 best_dist = dist; best = entry
     if best is None:
+        # fallback: nearest by planed total distance
         for entry in ODD_SIZES:
             pw, ph = planed_dims(entry[2])
-            p_big = max(pw, ph); p_sml = min(pw, ph)
-            dist = abs(p_big - cust_big) + abs(p_sml - cust_sml)
+            dist = abs(pw - cust_w_mm) + abs(ph - cust_h_mm)
             if dist < best_dist:
                 best_dist = dist; best = entry
     return best
@@ -291,11 +282,10 @@ _defaults = {
     "odd_qthk": None, "odd_qwid": None, "odd_qlen": None,
     "odd_ctu": "mm", "odd_cwu": "mm", "odd_clu": "m",
     "odd_sp":  "Kapur",
-    "odd_qsize_label": None,
-    "odd_qft": 8,
-    "odd_suggest": None,
-    "odd_accept_count": 0,
-    "odd_just_accepted": False,
+    "odd_qsize_label": None,   # selected quote size label from dropdown
+    "odd_qft": 8,              # selected quote length ft
+    "odd_suggest": None,       # suggested quote size label
+    "odd_accept_count": 0,     # incremented on Accept to force fresh widget key
     "odd_qty": 1,
     "cust_name": "", "cust_mobile": "",
     "q_ready":   False, "q_reply":   "", "q_total":   0.0, "q_cost":   0.0, "q_nitem": 0, "q_log":   [],
@@ -307,16 +297,8 @@ for _k, _v in _defaults.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
 
-DEFAULT_RATES = {
-    "r_kapur": 3800, "r_balau": 5500, "r_cheng": 6000,
-    "r_mker": 650,   "r_pker": 1000,
-}
-
 def reset_all():
     for k in list(st.session_state.keys()): del st.session_state[k]
-    # Restore default rates explicitly
-    for k, v in DEFAULT_RATES.items():
-        st.session_state[k] = v
     st.rerun()
 
 # ============================================================
@@ -432,18 +414,23 @@ def mm_to_inch(mm):
         if abs(mm - val) <= 6: return inch
     return max(round(mm / 25.4), 1)
 
+def ceil_10cents(x):
+    """Round up to nearest 10 cents. e.g. 15.24->15.30, 15.95->16.00"""
+    return math.ceil(round(x * 10, 8)) / 10
+
 def calc_from_mm(w_mm, h_mm, ft, rate, nom_w=None, nom_h=None):
     """
     Pricing always uses 7200 / nom_w / nom_h / ft.
     QB: nom_w/nom_h passed directly from STANDARD_SIZES.
     Odd size: nom_w/nom_h derived from mm_to_nominal_inch().
+    Price rounded up to nearest 10 cents.
     """
     if nom_w is None or nom_h is None:
         nom_w = mm_to_nominal_inch(w_mm)
         nom_h = mm_to_nominal_inch(h_mm)
     raw_pcs = 7200 / nom_w / nom_h / ft
     pcs     = max(math.floor(raw_pcs), 1)
-    price   = math.ceil(rate / pcs)
+    price   = ceil_10cents(rate / pcs)
     return round(raw_pcs, 3), pcs, price
 
 def is_keruing(species):
@@ -721,7 +708,7 @@ with tab_quote:
     st.caption("Select species, size and length from dropdowns. Rates above update price automatically.")
 
     size_labels = size_options_for_dropdown()
-    ft_labels   = [f"{ft} ft  ({FT_TO_M[ft]} m)" for ft in QB_FT]
+    ft_labels   = [f"{ft} ft  ({FT_TO_M[ft]} m)" for ft in STANDARD_FT]
 
     fc1, fc2, fc3, fc4, fc5 = st.columns([2, 2, 2, 1, 1])
     with fc1: f_sp       = st.selectbox("Species", SPECIES, key="f_sp")
@@ -924,12 +911,8 @@ with tab_odd:
                 unsafe_allow_html=True
             )
             if st.button(f"✅ Accept — {sug_full}", key="odd_accept_suggest"):
-                st.session_state.odd_qsize_label   = sug_lbl
-                st.session_state.odd_qft           = sug_ft
-                st.session_state.odd_just_accepted = True
-                # Write directly into widget keys before rerun
-                st.session_state["_qsize_widget"]  = sug_lbl
-                st.session_state["_qft_widget"]    = f"{sug_ft} ft  ({FT_TO_M[sug_ft]} m)"
+                st.session_state.odd_qsize_label = sug_lbl
+                st.session_state.odd_qft = sug_ft
                 st.rerun()
 
     st.markdown("**② Your Quote Size** — select from dropdown or type freely (used for pricing)")
@@ -963,30 +946,30 @@ with tab_odd:
     if st.session_state.odd_qmode == "dropdown":
         qd1, qd2 = st.columns([3, 2])
 
-        # Initialise widget keys if not set
-        if "_qsize_widget" not in st.session_state:
-            st.session_state["_qsize_widget"] = odd_all_labels[0]
-        if "_qft_widget" not in st.session_state:
-            st.session_state["_qft_widget"] = f"8 ft  ({FT_TO_M[8]} m)"  # 8ft default
+        _qsize_idx = 0
+        if st.session_state.get("odd_qsize_label") in odd_all_labels:
+            _qsize_idx = odd_all_labels.index(st.session_state.odd_qsize_label)
+
+        _ft_labels_idx = 0
+        _sug_ft_str = f"{st.session_state.odd_qft} ft  ({FT_TO_M.get(st.session_state.odd_qft, 2.4)} m)"
+        if _sug_ft_str in ft_labels_odd:
+            _ft_labels_idx = ft_labels_odd.index(_sug_ft_str)
 
         with qd1:
+            # No key= — index= fully controls the displayed value
             selected_qsize = st.selectbox(
                 "Quote Size (thickness × width)",
-                odd_all_labels,
-                key="_qsize_widget"
+                odd_all_labels, index=_qsize_idx
             )
             st.session_state.odd_qsize_label = selected_qsize
 
         with qd2:
+            # No key= — index= fully controls the displayed value
             selected_qft_label = st.selectbox(
-                "Quote Length", ft_labels_odd,
-                key="_qft_widget"
+                "Quote Length", ft_labels_odd, index=_ft_labels_idx
             )
             selected_qft = int(selected_qft_label.split(" ")[0])
             st.session_state.odd_qft = selected_qft
-
-        # Clear just_accepted flag after render
-        st.session_state.odd_just_accepted = False
 
         # Resolve mm dims from dropdown label — odd size ALWAYS uses actual mm
         qw_mm, qh_mm, _, _ = lookup_size(selected_qsize)
@@ -1280,7 +1263,8 @@ with tab_ply:
                         "profit_line":f"S${profit_total:,.2f}","margin_pct":f"{margin_pct}%","small_qty":False,
                         "moq_flag":item["moq_flag"],"moq_note":f"min {item['actual_qty']} sheets (requested {item['qty']})"
                     })
-                    cl=f"{item['grade']} plywood {item['thk']}mm @ S${item['sell']}/sheet x {item['actual_qty']} = S${item['line_total']:,.2f}{moq_note_txt}"
+                    cl_price = ceil_10cents(item['sell'])
+                    cl=f"{item['grade']} plywood {item['thk']}mm @ S${cl_price:.2f}/sheet x {item['actual_qty']} = S${round(cl_price * item['actual_qty'],2):,.2f}{moq_note_txt}"
                     if "Fire Retardant" in item['grade']:
                         cl+="\n  * Plywood may/will be wet & may/will have some powder when dried."
                     ply_reply.append(cl)
@@ -1424,4 +1408,4 @@ with tab_hist:
 # FOOTER
 # ============================================================
 st.markdown("---")
-st.caption("Timber AI Assistant V27  ·  Alvin ·  Prices in SGD  ·  30 sizes · 6~22ft ")
+st.caption("Timber AI Assistant V27  ·  PLONY Industries  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
