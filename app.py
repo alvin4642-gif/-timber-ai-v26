@@ -317,12 +317,18 @@ st.markdown("""
 # RATE INPUTS
 # ============================================================
 st.subheader("Current Rates (SGD/ton)")
-rc1, rc2, rc3, rc4, rc5 = st.columns(5)
+rc1, rc2, rc3, rc4, rc5, rc6 = st.columns([2, 2, 2, 2, 2, 1])
 with rc1: kapur_rate    = st.number_input("Kapur",         min_value=0, value=3800, step=50, key="r_kapur")
 with rc2: balau_rate    = st.number_input("Balau",         min_value=0, value=5500, step=50, key="r_balau")
 with rc3: cheng_rate    = st.number_input("Chengal",       min_value=0, value=6000, step=50, key="r_cheng")
 with rc4: mkeruing_rate = st.number_input("Mixed Keruing", min_value=0, value=650,  step=50, key="r_mker")
 with rc5: pkeruing_rate = st.number_input("Pure Keruing",  min_value=0, value=1000, step=50, key="r_pker")
+with rc6:
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("↩ Reset Rates", use_container_width=True, key="reset_rates_btn"):
+        for k, v in DEFAULT_RATES.items():
+            st.session_state[k] = v
+        st.rerun()
 
 species_rate = {
     "Kapur": kapur_rate, "Balau": balau_rate, "Chengal": cheng_rate,
