@@ -476,7 +476,37 @@ def build_reply(lines, total, is_timber=True, extra_note=""):
 # ============================================================
 # UI RENDER HELPERS
 # ============================================================
-def render_table(rows):
+def validate_odd_inputs(cthk_mm=None, cwid_mm=None, clen_val=None, clu=None,
+                         qthk_mm=None, qwid_mm=None, qlen_m=None, qlu=None):
+    """Validate Odd Size inputs. Returns list of error strings (empty = all OK)."""
+    errors = []
+    # Customer dims
+    for val, label in [(cthk_mm, "Customer thickness"), (cwid_mm, "Customer width")]:
+        if val is not None:
+            if val < 20:  errors.append(f"⚠️ {label} {val:.0f}mm is too small (min 20mm)")
+            if val > 500: errors.append(f"⚠️ {label} {val:.0f}mm is too large (max 500mm)")
+    if clen_val is not None and clu is not None:
+        if clu == "m":
+            if clen_val < 0.3: errors.append(f"⚠️ Customer length {clen_val}m is too short (min 0.3m)")
+            if clen_val > 6.6: errors.append(f"⚠️ Customer length {clen_val}m is too long (max 6.6m = 22ft) — did you mean {clen_val}ft ({round(clen_val*0.3048,1)}m)?")
+        elif clu == "ft":
+            if clen_val < 1:  errors.append(f"⚠️ Customer length {clen_val}ft is too short (min 1ft)")
+            if clen_val > 22: errors.append(f"⚠️ Customer length {clen_val}ft is too long (max 22ft)")
+    # Quote dims (free type only)
+    for val, label in [(qthk_mm, "Quote thickness"), (qwid_mm, "Quote width")]:
+        if val is not None:
+            if val < 20:  errors.append(f"⚠️ {label} {val:.0f}mm is too small (min 20mm)")
+            if val > 500: errors.append(f"⚠️ {label} {val:.0f}mm is too large (max 500mm)")
+    if qlen_m is not None and qlu is not None:
+        if qlu == "m":
+            if qlen_m < 0.3: errors.append(f"⚠️ Quote length {qlen_m}m is too short (min 0.3m)")
+            if qlen_m > 6.6: errors.append(f"⚠️ Quote length {qlen_m}m is too long (max 6.6m = 22ft) — did you mean {qlen_m}ft ({round(qlen_m*0.3048,1)}m)?")
+        elif qlu == "ft":
+            if qlen_m < 1:  errors.append(f"⚠️ Quote length {qlen_m}ft is too short (min 1ft)")
+            if qlen_m > 22: errors.append(f"⚠️ Quote length {qlen_m}ft is too long (max 22ft)")
+    return errors
+
+
     if not rows: return
     headers = list(rows[0].keys())
     html = '<table style="width:100%;border-collapse:collapse;font-size:13px">'
@@ -1045,8 +1075,28 @@ with tab_odd:
             if qh_mm and qw_mm and q_len_m_use else None
         )
 
+    # ── Validation ───────────────────────────────────────────
+    _cthk_val = st.session_state.odd_cthk; _cwid_val = st.session_state.odd_cwid
+    _clen_val = st.session_state.odd_clen; _clu = st.session_state.odd_clu
+    _ctu = st.session_state.odd_ctu; _cwu = st.session_state.odd_cwu
+    _cthk_mm_v = float(_cthk_val) * 25.4 if (_cthk_val and _ctu == "inch") else (float(_cthk_val) if _cthk_val else None)
+    _cwid_mm_v = float(_cwid_val) * 25.4 if (_cwid_val and _cwu == "inch") else (float(_cwid_val) if _cwid_val else None)
+    _qlu_v = st.session_state.odd_qlu_free if st.session_state.odd_qmode == "free" else None
+    _qlen_raw_v = float(st.session_state.odd_qlen_free) if (st.session_state.odd_qmode == "free" and st.session_state.odd_qlen_free) else None
+
+    _val_errors = validate_odd_inputs(
+        cthk_mm=_cthk_mm_v, cwid_mm=_cwid_mm_v,
+        clen_val=float(_clen_val) if _clen_val else None, clu=_clu,
+        qthk_mm=float(st.session_state.odd_qthk_free) if (st.session_state.odd_qmode == "free" and st.session_state.odd_qthk_free) else None,
+        qwid_mm=float(st.session_state.odd_qwid_free) if (st.session_state.odd_qmode == "free" and st.session_state.odd_qwid_free) else None,
+        qlen_m=_qlen_raw_v, qlu=_qlu_v,
+    )
+    if _val_errors:
+        for _e in _val_errors:
+            st.error(_e)
+
     # Live price preview
-    if qw_mm and qh_mm and q_len_m_use:
+    if qw_mm and qh_mm and q_len_m_use and not _val_errors:
         ft_for_calc = m_to_nominal_ft(q_len_m_use, ODD_FT) if selected_qft is None else selected_qft
         raw_pcs, pcs_fl, price_preview = calc_from_mm(qw_mm, qh_mm, ft_for_calc, odd_rate)
         line_preview = round(price_preview * st.session_state.odd_qty, 2)
@@ -1059,9 +1109,11 @@ with tab_odd:
 
     ob1, ob2 = st.columns(2)
     with ob1:
+        cthk = st.session_state.odd_cthk; cwid = st.session_state.odd_cwid; clen = st.session_state.odd_clen
         if st.button("+ Add to Odd Size List", type="primary", use_container_width=True):
-            cthk = st.session_state.odd_cthk; cwid = st.session_state.odd_cwid; clen = st.session_state.odd_clen
-            if cthk and cwid and clen and qw_mm and qh_mm and q_len_m_use:
+            if _val_errors:
+                st.error("Fix the errors above before adding.")
+            elif cthk and cwid and clen and qw_mm and qh_mm and q_len_m_use:
                 ctu = st.session_state.odd_ctu; cwu = st.session_state.odd_cwu; clu = st.session_state.odd_clu
                 cust_size = (
                     f'{cthk}" x {cwid}" x {clen}{"ft" if clu=="ft" else "m"}'
