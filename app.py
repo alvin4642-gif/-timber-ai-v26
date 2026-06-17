@@ -1,5 +1,5 @@
 # ============================================================
-# Timber AI Assistant V28 — PART 1 of 3
+# Timber AI Assistant V27 — PART 1 of 3
 # CONFIG & DATA
 # Paste this FIRST at the top of your app.py in GitHub
 # ============================================================
@@ -343,8 +343,9 @@ with rc5: pkeruing_rate = st.number_input("Pure Keruing",  min_value=0, value=10
 with rc6:
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("↩ Reset Rates", use_container_width=True, key="reset_rates_btn"):
-        for k, v in DEFAULT_RATES.items():
-            st.session_state[k] = v
+        for k in DEFAULT_RATES:
+            if k in st.session_state:
+                del st.session_state[k]
         st.rerun()
 
 species_rate = {
@@ -1434,4 +1435,4 @@ with tab_hist:
 # FOOTER
 # ============================================================
 st.markdown("---")
-st.caption("Timber AI Assistant V28  · Alvin  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
+st.caption("Timber AI Assistant V27  ·  PLONY Industries  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
