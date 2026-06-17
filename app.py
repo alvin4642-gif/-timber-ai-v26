@@ -799,20 +799,45 @@ with tab_quote:
             unsafe_allow_html=True
         )
         for i, item in enumerate(st.session_state.order_items):
-            cur_rate = species_rate[item["species"]]
-            raw, _, cur_price = calc_from_mm(
-                item["w_mm"], item["h_mm"], item["ft"], cur_rate,
+            cur_rate   = species_rate[item["species"]]
+            locked_rate = item["rate"]
+            rate_changed = cur_rate != locked_rate
+            # Always display at locked rate (price as quoted)
+            _, _, locked_price = calc_from_mm(
+                item["w_mm"], item["h_mm"], item["ft"], locked_rate,
                 item.get("nom_w"), item.get("nom_h")
             )
-            cur_total = round(cur_price * item["qty"], 2)
-            col_a, col_b, col_c = st.columns([3, 3, 1])
-            with col_a: st.write(f"**{item['species']}**  {item['size']}")
-            with col_b: st.write(f"S${cur_price}/pc  x  {item['qty']} pcs  =  S${cur_total:,.2f}")
-            with col_c:
-                if st.button("🗑️", key=f"dt_{i}"):
-                    st.session_state.order_items.pop(i)
-                    st.session_state.q_ready = False
-                    st.rerun()
+            locked_total = round(locked_price * item["qty"], 2)
+
+            if rate_changed:
+                st.markdown(
+                    f'<div style="background:#FAEEDA;border:0.5px solid #FAC775;'
+                    f'border-radius:var(--border-radius-md);padding:10px 14px;margin-bottom:4px">'
+                    f'<div style="display:flex;justify-content:space-between;align-items:center">'
+                    f'<span style="font-weight:500;font-size:14px;color:#412402">'
+                    f'{item["species"]} &nbsp;{item["size"]}</span>'
+                    f'<span style="font-size:13px;color:#633806">'
+                    f'S${locked_price}/pc × {item["qty"]} = S${locked_total:,.2f}</span></div>'
+                    f'<div style="font-size:12px;color:#633806;margin-top:5px;display:flex;align-items:center;gap:6px">'
+                    f'⚠️ Quoted at S${locked_rate:,}/ton — current rate is S${cur_rate:,}/ton. '
+                    f'Price not updated. Delete and re-add to use new rate.</div></div>',
+                    unsafe_allow_html=True
+                )
+                col_c2, _ = st.columns([1, 11])
+                with col_c2:
+                    if st.button("🗑️", key=f"dt_{i}"):
+                        st.session_state.order_items.pop(i)
+                        st.session_state.q_ready = False
+                        st.rerun()
+            else:
+                col_a, col_b, col_c = st.columns([3, 3, 1])
+                with col_a: st.write(f"**{item['species']}**  {item['size']}")
+                with col_b: st.write(f"S${locked_price}/pc  x  {item['qty']} pcs  =  S${locked_total:,.2f}")
+                with col_c:
+                    if st.button("🗑️", key=f"dt_{i}"):
+                        st.session_state.order_items.pop(i)
+                        st.session_state.q_ready = False
+                        st.rerun()
 
         st.divider()
         cg1, cg2, cg3 = st.columns([2, 1, 1])
@@ -828,12 +853,12 @@ with tab_quote:
         if gen_quote:
             log_items = []; customer_reply = []; grand_total = 0; cost_total = 0
             for item in st.session_state.order_items:
-                cur_rate = species_rate[item["species"]]
-                cur_raw, _, cur_price = calc_from_mm(
-                    item["w_mm"], item["h_mm"], item["ft"], cur_rate,
+                locked_rate = item["rate"]
+                locked_raw, _, locked_price = calc_from_mm(
+                    item["w_mm"], item["h_mm"], item["ft"], locked_rate,
                     item.get("nom_w"), item.get("nom_h")
                 )
-                gt = round(cur_price * item["qty"], 2)
+                gt = round(locked_price * item["qty"], 2)
                 grand_total += gt
                 cost_est = round(gt * 0.85, 2); cost_total += cost_est
                 profit = round(gt - cost_est, 2)
@@ -841,9 +866,9 @@ with tab_quote:
                 log_items.append({
                     "heading": f"{item['species']} timber · {item['size']}",
                     "rows": {
-                        "Rate":            f"S${cur_rate}/ton",
-                        "Pieces per ton":  str(round(cur_raw, 2)),
-                        "Price per piece": f"S${cur_price}",
+                        "Rate":            f"S${locked_rate:,}/ton",
+                        "Pieces per ton":  str(round(locked_raw, 2)),
+                        "Price per piece": f"S${locked_price}",
                         "Qty":             f"{item['qty']} pcs",
                         "Line total":      f"S${gt:,.2f}",
                     },
@@ -851,7 +876,7 @@ with tab_quote:
                     "small_qty": item["small_qty"]
                 })
                 customer_reply.append(
-                    f"{item['species']} timber\n{item['size']} @ S${cur_price}/pcs x {item['qty']} = S${gt:,.2f}"
+                    f"{item['species']} timber\n{item['size']} @ S${locked_price}/pcs x {item['qty']} = S${gt:,.2f}"
                 )
             grand_total = round(grand_total, 2); cost_total = round(cost_total, 2)
             reply_text = build_reply(customer_reply, grand_total, is_timber=True)
