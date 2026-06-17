@@ -1014,18 +1014,17 @@ with tab_odd:
         st.caption("Accepts: 200×400×1600 · T200 W400 L1600 · 200T x 400W x 1600mmL · 200 400 1600 (any order/combo)")
         qf_col1, qf_col2 = st.columns([4, 1])
         with qf_col1:
-            qf_input = st.text_input("Paste dimensions",
+            st.text_input("Paste dimensions",
                 placeholder="e.g.  200×400×1600  or  T200 W400 L1600  or  200T x 400 x 1600mmL",
                 label_visibility="collapsed", key="odd_quickfill_inp")
         with qf_col2:
             qf_btn = st.button("Auto-fill ↓", use_container_width=True, key="odd_qf_btn")
 
-        # Read from widget key (value= conflicts with key= in Streamlit)
+        # Must read from session_state key — value= is ignored when key= is set in Streamlit
         _qf_val = st.session_state.get("odd_quickfill_inp", "").strip()
         if qf_btn and _qf_val:
             parsed = parse_dimension_string(_qf_val)
             if parsed:
-                # Write directly to the session state keys that number_input widgets read
                 st.session_state["odd_cthk"] = float(parsed["t"]) if parsed.get("t") is not None else st.session_state.odd_cthk
                 st.session_state["odd_cwid"] = float(parsed["w"]) if parsed.get("w") is not None else st.session_state.odd_cwid
                 if parsed.get("l") is not None:
@@ -1033,9 +1032,9 @@ with tab_odd:
                     st.session_state["odd_clu"]  = "m"
                 st.session_state["odd_ctu"] = "mm"
                 st.session_state["odd_cwu"] = "mm"
-                # Force number_input widgets to re-read by deleting their cached widget keys
-                for wk in ["odd_cthk_inp", "odd_cwid_inp", "odd_clen_inp"]:
-                    if wk in st.session_state: del st.session_state[wk]
+                # Delete widget-bound keys so number_inputs re-render with new values
+                for _wk in ["odd_cthk_inp", "odd_cwid_inp", "odd_clen_inp"]:
+                    if _wk in st.session_state: del st.session_state[_wk]
                 st.rerun()
             else:
                 st.error("⚠️ Could not parse — try: 200×400×1600 or T200 W400 L1600")
@@ -1614,4 +1613,4 @@ with tab_hist:
 # FOOTER
 # ============================================================
 st.markdown("---")
-st.caption("Timber AI Assistant V27  ·  PLONY Industries  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
+st.caption("Timber AI Assistant V27  · ALVIN  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
