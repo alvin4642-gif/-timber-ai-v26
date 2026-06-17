@@ -1,5 +1,5 @@
 # ============================================================
-# Timber AI Assistant V28 — PART 1 of 3
+# Timber AI Assistant V27 — PART 1 of 3
 # CONFIG & DATA
 # Paste this FIRST at the top of your app.py in GitHub
 # ============================================================
@@ -76,7 +76,11 @@ PLY_GRADES = [
 # ============================================================
 STANDARD_FT  = [6, 8, 10, 12, 14, 16, 18, 20, 22]
 ODD_FT       = list(range(1, 23))  # 1~22ft — covers all odd lengths like 5ft, 7ft, 9ft
-FT_TO_M      = {ft: round(ft * 0.3048, 1) for ft in range(1, 23)}
+FT_TO_M      = {
+    1:0.3,  2:0.6,  3:0.9,  4:1.2,  5:1.5,  6:1.8,  7:2.1,  8:2.4,  9:2.7,
+    10:3.0, 11:3.3, 12:3.6, 13:3.9, 14:4.2, 15:4.5, 16:4.8, 17:5.1,
+    18:5.4, 19:5.7, 20:6.0, 21:6.4, 22:6.6,
+}
 TIMBER_DENSITY_KG_M3 = 706  # calibrated to trade standard: 7200 / (w_inch * h_inch * l_ft)
 
 STANDARD_SIZES = [
@@ -351,7 +355,7 @@ st.divider()
 # END OF PART 1 — paste Part 2 immediately below this line
 # ============================================================
 # ============================================================
-# Timber AI Assistant V28 — PART 2 of 3
+# Timber AI Assistant V27 — PART 2 of 3
 # FUNCTIONS: Gist helpers, calc engine, parser, UI utilities
 # Paste this SECOND, immediately after Part 1
 # ============================================================
@@ -693,7 +697,7 @@ def parsed_to_odd_item(p, species_rate_map):
 # END OF PART 2 — paste Part 3 immediately below this line
 # ============================================================
 # ============================================================
-# Timber AI Assistant V28 — PART 3 of 3
+# Timber AI Assistant V27 — PART 3 of 3
 # UI TABS: Quote Builder, Odd Size, Plywood, Suppliers, History
 # Paste this THIRD, immediately after Part 2
 # AI Parser and Plywood Cut-to-Size removed — built as separate apps
@@ -1428,4 +1432,4 @@ with tab_hist:
 # FOOTER
 # ============================================================
 st.markdown("---")
-st.caption("Timber AI Assistant V28  ·  CREATOR ALVIN  ·  Prices in SGD  ·  30 sizes · 6~22ft ")
+st.caption("Timber AI Assistant V27  ·  PLONY Industries  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
