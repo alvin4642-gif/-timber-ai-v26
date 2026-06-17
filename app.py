@@ -307,6 +307,7 @@ _defaults = {
     "rate_reset_key": 0,
     "odd_quickfill": "",
     "odd_qlu_free": "m",
+    "qf_fill_key": 0,
 }
 for _k, _v in _defaults.items():
     if _k not in st.session_state:
@@ -1032,9 +1033,9 @@ with tab_odd:
                     st.session_state["odd_clu"]  = "m"
                 st.session_state["odd_ctu"] = "mm"
                 st.session_state["odd_cwu"] = "mm"
-                # Delete widget-bound keys so number_inputs re-render with new values
-                for _wk in ["odd_cthk_inp", "odd_cwid_inp", "odd_clen_inp"]:
-                    if _wk in st.session_state: del st.session_state[_wk]
+                # Increment key counter → customer size widgets get brand new keys
+                # → render fresh at value= args (same pattern as Reset Rates)
+                st.session_state["qf_fill_key"] += 1
                 st.rerun()
             else:
                 st.error("⚠️ Could not parse — try: 200×400×1600 or T200 W400 L1600")
@@ -1042,11 +1043,12 @@ with tab_odd:
     # ── Customer Requested Size (free type) ──────────────────
     st.markdown("**① Customer Requested Size** — type exactly what customer asked for")
     cc1, cc2, cc3, cc4, cc5, cc6 = st.columns(6)
-    with cc1: st.session_state.odd_cthk = st.number_input("Thickness", min_value=None, value=st.session_state.odd_cthk, placeholder="e.g. 80",  step=0.5, format="%.1f", key="odd_cthk_inp")
+    _fk = st.session_state.qf_fill_key
+    with cc1: st.session_state.odd_cthk = st.number_input("Thickness", min_value=None, value=st.session_state.odd_cthk, placeholder="e.g. 80",  step=0.5, format="%.1f", key=f"odd_cthk_inp_{_fk}")
     with cc2: st.session_state.odd_ctu  = st.selectbox("Unit",  ["mm","inch"], index=["mm","inch"].index(st.session_state.odd_ctu), key="odd_ctu_sel")
-    with cc3: st.session_state.odd_cwid = st.number_input("Width",     min_value=None, value=st.session_state.odd_cwid, placeholder="e.g. 125", step=0.5, format="%.1f", key="odd_cwid_inp")
+    with cc3: st.session_state.odd_cwid = st.number_input("Width",     min_value=None, value=st.session_state.odd_cwid, placeholder="e.g. 125", step=0.5, format="%.1f", key=f"odd_cwid_inp_{_fk}")
     with cc4: st.session_state.odd_cwu  = st.selectbox("Unit ", ["mm","inch"], index=["mm","inch"].index(st.session_state.odd_cwu), key="odd_cwu_sel")
-    with cc5: st.session_state.odd_clen = st.number_input("Length",    min_value=None, value=st.session_state.odd_clen, placeholder="e.g. 2.4", step=0.1, format="%.1f", key="odd_clen_inp")
+    with cc5: st.session_state.odd_clen = st.number_input("Length",    min_value=None, value=st.session_state.odd_clen, placeholder="e.g. 2.4", step=0.1, format="%.1f", key=f"odd_clen_inp_{_fk}")
     with cc6: st.session_state.odd_clu  = st.selectbox("Unit  ", ["m","ft"], index=["m","ft"].index(st.session_state.odd_clu), key="odd_clu_sel")
 
     # ── Suggest nearest quote size ────────────────────────────
@@ -1268,6 +1270,7 @@ with tab_odd:
             st.session_state.odd_qft = 8
             st.session_state.odd_qlu_free = "m"
             st.session_state.odd_quickfill = ""
+            st.session_state.qf_fill_key += 1
             st.rerun()
 
     if st.session_state.odd_items:
