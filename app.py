@@ -1,5 +1,5 @@
 # ============================================================
-# Timber AI Assistant V28 — PART 1 of 3
+# Timber AI Assistant V27 — PART 1 of 3
 # CONFIG & DATA
 # Paste this FIRST at the top of your app.py in GitHub
 # ============================================================
@@ -298,6 +298,7 @@ _defaults = {
     "odd_ready": False, "odd_reply": "", "odd_total": 0.0, "odd_cost": 0.0, "odd_nitem":0, "odd_log": [],
     "ply_ready": False, "ply_reply": "", "ply_total": 0.0, "ply_cost": 0.0, "ply_nitem":0, "ply_log": [],
     "hist_search_val": "",
+    "rate_reset_key": 0,
 }
 for _k, _v in _defaults.items():
     if _k not in st.session_state:
@@ -319,33 +320,25 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ============================================================
-# DEFAULT RATES
-# ============================================================
-DEFAULT_RATES = {
-    "r_kapur": 3800,
-    "r_balau": 5500,
-    "r_cheng": 6000,
-    "r_mker":  650,
-    "r_pker":  1000,
-}
+# Default rate values — used as value= args in number_input widgets
+DEFAULT_RATES = {"Kapur": 3800, "Balau": 5500, "Chengal": 6000, "Mixed Keruing": 650, "Pure Keruing": 1000}
 
 # ============================================================
 # RATE INPUTS
 # ============================================================
 st.subheader("Current Rates (SGD/ton)")
 rc1, rc2, rc3, rc4, rc5, rc6 = st.columns([2, 2, 2, 2, 2, 1])
-with rc1: kapur_rate    = st.number_input("Kapur",         min_value=0, value=3800, step=50, key="r_kapur")
-with rc2: balau_rate    = st.number_input("Balau",         min_value=0, value=5500, step=50, key="r_balau")
-with rc3: cheng_rate    = st.number_input("Chengal",       min_value=0, value=6000, step=50, key="r_cheng")
-with rc4: mkeruing_rate = st.number_input("Mixed Keruing", min_value=0, value=650,  step=50, key="r_mker")
-with rc5: pkeruing_rate = st.number_input("Pure Keruing",  min_value=0, value=1000, step=50, key="r_pker")
+_rk = st.session_state.rate_reset_key  # changes on reset → forces fresh widget
+with rc1: kapur_rate    = st.number_input("Kapur",         min_value=0, value=3800, step=50, key=f"r_kapur_{_rk}")
+with rc2: balau_rate    = st.number_input("Balau",         min_value=0, value=5500, step=50, key=f"r_balau_{_rk}")
+with rc3: cheng_rate    = st.number_input("Chengal",       min_value=0, value=6000, step=50, key=f"r_cheng_{_rk}")
+with rc4: mkeruing_rate = st.number_input("Mixed Keruing", min_value=0, value=650,  step=50, key=f"r_mker_{_rk}")
+with rc5: pkeruing_rate = st.number_input("Pure Keruing",  min_value=0, value=1000, step=50, key=f"r_pker_{_rk}")
 with rc6:
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("↩ Reset Rates", use_container_width=True, key="reset_rates_btn"):
-        for k in DEFAULT_RATES:
-            if k in st.session_state:
-                del st.session_state[k]
+        st.session_state.rate_reset_key += 1  # new key suffix → widgets re-instantiate at value= defaults
+        st.toast("✅ Rates reset to defaults", icon="↩")
         st.rerun()
 
 species_rate = {
@@ -1435,4 +1428,4 @@ with tab_hist:
 # FOOTER
 # ============================================================
 st.markdown("---")
-st.caption("Timber AI Assistant V28  ·  Alvin  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
+st.caption("Timber AI Assistant V27  ·  PLONY Industries  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
