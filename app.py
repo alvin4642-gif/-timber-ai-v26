@@ -1,5 +1,5 @@
 # ============================================================
-# Timber AI Assistant V27 — PART 1 of 3
+# Timber AI Assistant V28 — PART 1 of 3
 # CONFIG & DATA
 # Paste this FIRST at the top of your app.py in GitHub
 # ============================================================
@@ -75,7 +75,8 @@ PLY_GRADES = [
 # pcs/ton calculated live from dimensions; no hardcoded pcs table needed.
 # ============================================================
 STANDARD_FT  = [6, 8, 10, 12, 14, 16, 18, 20, 22]
-FT_TO_M      = {6:1.8, 8:2.4, 10:3.0, 12:3.6, 14:4.2, 16:4.8, 18:5.4, 20:6.0, 22:6.6}
+ODD_FT       = list(range(1, 23))  # 1~22ft — covers all odd lengths like 5ft, 7ft, 9ft
+FT_TO_M      = {ft: round(ft * 0.3048, 1) for ft in range(1, 23)}
 TIMBER_DENSITY_KG_M3 = 706  # calibrated to trade standard: 7200 / (w_inch * h_inch * l_ft)
 
 STANDARD_SIZES = [
@@ -165,10 +166,15 @@ def mm_to_nominal_inch(mm):
     closest = min(TRADE_MM_TO_INCH.keys(), key=lambda k: abs(k - mm_int))
     return TRADE_MM_TO_INCH[closest]
 
-def m_to_nominal_ft(l_m):
-    """Round metres to nearest standard ft."""
+def m_to_nominal_ft(l_m, ft_list=None):
+    """Ceiling to next standard ft — so customer length is always covered."""
+    if ft_list is None:
+        ft_list = STANDARD_FT
     ft = l_m * 3.28084
-    return min(STANDARD_FT, key=lambda f: abs(f - ft))
+    for f in sorted(ft_list):
+        if f >= ft:
+            return f
+    return sorted(ft_list)[-1]
 
 # QB sizes only (exclude 5", 7", 11" odd groups)
 QB_SIZES = [s for s in STANDARD_SIZES if s[3] is not None]
@@ -312,6 +318,17 @@ st.markdown("""
   <div class="app-header-sub">Professional Quoting System &nbsp;·&nbsp; Prices in SGD &nbsp;·&nbsp; PLONY Industries</div>
 </div>
 """, unsafe_allow_html=True)
+
+# ============================================================
+# DEFAULT RATES
+# ============================================================
+DEFAULT_RATES = {
+    "r_kapur": 3800,
+    "r_balau": 5500,
+    "r_cheng": 6000,
+    "r_mker":  650,
+    "r_pker":  1000,
+}
 
 # ============================================================
 # RATE INPUTS
@@ -892,6 +909,8 @@ with tab_odd:
         ctu = st.session_state.odd_ctu; cwu = st.session_state.odd_cwu
         cthk_mm = float(cthk_val) * 25.4 if ctu == "inch" else float(cthk_val)
         cwid_mm  = float(cwid_val)  * 25.4 if cwu == "inch" else float(cwid_val)
+        # Sort so smaller = thickness, larger = width — entry order doesn't matter
+        cthk_mm, cwid_mm = sorted([cthk_mm, cwid_mm])
         sug = suggest_quote_size(cthk_mm, cwid_mm)
 
         # Suggest nearest standard ft from customer length
@@ -899,7 +918,7 @@ with tab_odd:
         clu      = st.session_state.odd_clu
         if clen_val:
             clen_m   = float(clen_val) if clu == "m" else float(clen_val) * 0.3048
-            sug_ft   = m_to_nominal_ft(clen_m)
+            sug_ft   = m_to_nominal_ft(clen_m, ODD_FT)
         else:
             sug_ft   = 8  # default
 
@@ -924,7 +943,7 @@ with tab_odd:
     st.markdown("**② Your Quote Size** — select from dropdown or type freely (used for pricing)")
 
     odd_all_labels = odd_size_options_for_dropdown()
-    ft_labels_odd  = [f"{ft} ft  ({FT_TO_M[ft]} m)" for ft in STANDARD_FT]
+    ft_labels_odd  = [f"{ft} ft  ({FT_TO_M[ft]} m)" for ft in ODD_FT]
 
     # Toggle: dropdown vs free type
     if "odd_qmode" not in st.session_state:
@@ -1020,7 +1039,7 @@ with tab_odd:
 
     # Live price preview
     if qw_mm and qh_mm and q_len_m_use:
-        ft_for_calc = m_to_nominal_ft(q_len_m_use) if selected_qft is None else selected_qft
+        ft_for_calc = m_to_nominal_ft(q_len_m_use, ODD_FT) if selected_qft is None else selected_qft
         raw_pcs, pcs_fl, price_preview = calc_from_mm(qw_mm, qh_mm, ft_for_calc, odd_rate)
         line_preview = round(price_preview * st.session_state.odd_qty, 2)
         nom_w_disp = mm_to_nominal_inch(qw_mm); nom_h_disp = mm_to_nominal_inch(qh_mm)
@@ -1041,7 +1060,7 @@ with tab_odd:
                     if ctu == "inch"
                     else f"{cthk}mm x {cwid}mm x {clen}{clu}"
                 )
-                ft_for_add  = m_to_nominal_ft(q_len_m_use) if selected_qft is None else selected_qft
+                ft_for_add  = m_to_nominal_ft(q_len_m_use, ODD_FT) if selected_qft is None else selected_qft
                 raw2, pcs_fl2, price2 = calc_from_mm(qw_mm, qh_mm, ft_for_add, odd_rate)
                 line_tot2   = round(price2 * st.session_state.odd_qty, 2)
                 st.session_state.odd_items.append({
@@ -1110,7 +1129,7 @@ with tab_odd:
                         "Rate":             f"S${item['rate']}/ton",
                         "Pcs/ton (raw)":    str(item['pcs_per_ton']),
                         "Pcs used (floor)": str(item.get('pcs_floor',math.floor(float(item['pcs_per_ton'])))),
-                        "Price per piece":  f"S${item['price']} (rounded to nearest $1)",
+                        "Price per piece":  f"S${item['price']} (rounded up to nearest 10 cents)",
                         "Qty":              f"{item['qty']} pcs",
                         "Line total":       f"S${item['line_total']:,.2f}",
                     },
@@ -1415,4 +1434,4 @@ with tab_hist:
 # FOOTER
 # ============================================================
 st.markdown("---")
-st.caption("Timber AI Assistant V27  ·  PLONY Industries  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
+st.caption("Timber AI Assistant V28  · Alvin  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
