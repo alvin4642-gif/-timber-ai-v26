@@ -305,6 +305,8 @@ _defaults = {
     "ply_ready": False, "ply_reply": "", "ply_total": 0.0, "ply_cost": 0.0, "ply_nitem":0, "ply_log": [],
     "hist_search_val": "",
     "rate_reset_key": 0,
+    "odd_quickfill": "",
+    "odd_qlu_free": "m",
 }
 for _k, _v in _defaults.items():
     if _k not in st.session_state:
@@ -1091,8 +1093,6 @@ with tab_odd:
     ft_labels_odd  = [f"{ft} ft  ({FT_TO_M[ft]} m)" for ft in ODD_FT]
 
     # Toggle: dropdown vs free type
-    if "odd_quickfill" not in st.session_state:
-        st.session_state.odd_quickfill = ""
     if "odd_qmode" not in st.session_state:
         st.session_state.odd_qmode = "dropdown"
     if "odd_qthk_free" not in st.session_state:
@@ -1101,8 +1101,6 @@ with tab_odd:
         st.session_state.odd_qwid_free = None
     if "odd_qlen_free" not in st.session_state:
         st.session_state.odd_qlen_free = None
-    if "odd_qlu_free" not in st.session_state:
-        st.session_state.odd_qlu_free = "m"
 
     st.markdown("""
     <style>
