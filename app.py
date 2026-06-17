@@ -506,7 +506,7 @@ def validate_odd_inputs(cthk_mm=None, cwid_mm=None, clen_val=None, clu=None,
             if qlen_m > 22: errors.append(f"⚠️ Quote length {qlen_m}ft is too long (max 22ft)")
     return errors
 
-
+def render_table(rows):
     if not rows: return
     headers = list(rows[0].keys())
     html = '<table style="width:100%;border-collapse:collapse;font-size:13px">'
