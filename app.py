@@ -506,7 +506,48 @@ def validate_odd_inputs(cthk_mm=None, cwid_mm=None, clen_val=None, clu=None,
             if qlen_m > 22: errors.append(f"⚠️ Quote length {qlen_m}ft is too long (max 22ft)")
     return errors
 
-def render_table(rows):
+def parse_dimension_string(raw):
+    """Parse a free-text dimension string into (thk_mm, wid_mm, len_mm) or None.
+
+    Supported formats (all case-insensitive, mm assumed):
+      200x400x1600          200×400×1600       200 400 1600
+      T200 W400 L1600       L1600 W400 T200    200T x 400W x 1600L
+      200T x 400 x 1600mmL  T200mm W400 L1600mm
+    Returns dict with keys 't', 'w', 'l' (all floats in mm), or None on failure.
+    """
+    import re
+    s = raw.strip().upper()
+    s = s.replace("MM", "").replace("×", "x")
+
+    labeled = {}
+    # Match prefix labels: T200, W400, L1600
+    for label, key in [("T", "t"), ("W", "w"), ("L", "l")]:
+        m = re.search(rf'\b{label}(\d+(?:\.\d+)?)', s)
+        if m:
+            labeled[key] = float(m.group(1))
+
+    # Match suffix labels: 200T, 400W, 1600L
+    for label, key in [("T", "t"), ("W", "w"), ("L", "l")]:
+        if key not in labeled:
+            m = re.search(rf'(\d+(?:\.\d+)?){label}\b', s)
+            if m:
+                labeled[key] = float(m.group(1))
+
+    if len(labeled) == 3:
+        return labeled
+
+    # No labels — extract all numbers and sort: smallest=T, middle=W, largest=L
+    nums = [float(n) for n in re.findall(r'\d+(?:\.\d+)?', s)]
+    if len(nums) == 3:
+        t, w, l = sorted(nums)
+        return {"t": t, "w": w, "l": l}
+    if len(nums) == 2:
+        t, w = sorted(nums)
+        return {"t": t, "w": w, "l": None}
+
+    return None
+
+
     if not rows: return
     headers = list(rows[0].keys())
     html = '<table style="width:100%;border-collapse:collapse;font-size:13px">'
@@ -965,6 +1006,36 @@ with tab_odd:
             value=species_rate[st.session_state.odd_sp], step=50, key="odd_rate")
     with os3: st.session_state.odd_qty = st.number_input("Qty (pcs)", min_value=1, value=st.session_state.odd_qty, step=1, key="odd_qty_inp")
 
+    # ── Quick Fill parser ─────────────────────────────────────
+    with st.expander("⚡ Quick Fill — paste customer dimensions", expanded=False):
+        st.caption("Accepts: 200×400×1600 · T200 W400 L1600 · 200T x 400W x 1600mmL · 200 400 1600 (any order/combo)")
+        qf_col1, qf_col2 = st.columns([4, 1])
+        with qf_col1:
+            qf_input = st.text_input("Paste dimensions", value=st.session_state.odd_quickfill,
+                placeholder="e.g.  200×400×1600  or  T200 W400 L1600  or  200T x 400 x 1600mmL",
+                label_visibility="collapsed", key="odd_quickfill_inp")
+        with qf_col2:
+            qf_btn = st.button("Auto-fill ↓", use_container_width=True, key="odd_qf_btn")
+
+        if qf_btn and qf_input.strip():
+            parsed = parse_dimension_string(qf_input.strip())
+            if parsed:
+                if parsed.get("t") is not None: st.session_state.odd_cthk = float(parsed["t"])
+                if parsed.get("w") is not None: st.session_state.odd_cwid = float(parsed["w"])
+                if parsed.get("l") is not None: st.session_state.odd_clen = float(parsed["l"])
+                # Length from Quick Fill is always mm — convert to m for the length field
+                if parsed.get("l") is not None:
+                    st.session_state.odd_clen = round(parsed["l"] / 1000, 3)
+                    st.session_state.odd_clu  = "m"
+                st.session_state.odd_ctu = "mm"
+                st.session_state.odd_cwu = "mm"
+                st.session_state.odd_quickfill = qf_input.strip()
+                st.success(f"✅ Filled: T{parsed['t']:.0f} × W{parsed['w']:.0f}mm"
+                           + (f" × L{parsed['l']:.0f}mm ({round(parsed['l']/1000,3)}m)" if parsed.get('l') else ""))
+                st.rerun()
+            else:
+                st.error("⚠️ Could not parse — try: 200×400×1600 or T200 W400 L1600")
+
     # ── Customer Requested Size (free type) ──────────────────
     st.markdown("**① Customer Requested Size** — type exactly what customer asked for")
     cc1, cc2, cc3, cc4, cc5, cc6 = st.columns(6)
@@ -1020,6 +1091,8 @@ with tab_odd:
     ft_labels_odd  = [f"{ft} ft  ({FT_TO_M[ft]} m)" for ft in ODD_FT]
 
     # Toggle: dropdown vs free type
+    if "odd_quickfill" not in st.session_state:
+        st.session_state.odd_quickfill = ""
     if "odd_qmode" not in st.session_state:
         st.session_state.odd_qmode = "dropdown"
     if "odd_qthk_free" not in st.session_state:
@@ -1195,6 +1268,7 @@ with tab_odd:
                 st.session_state[k] = None
             st.session_state.odd_qft = 8
             st.session_state.odd_qlu_free = "m"
+            st.session_state.odd_quickfill = ""
             st.rerun()
 
     if st.session_state.odd_items:
