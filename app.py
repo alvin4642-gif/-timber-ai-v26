@@ -355,9 +355,6 @@ species_rate = {
     "Mixed Keruing": mkeruing_rate, "Pure Keruing": pkeruing_rate
 }
 st.divider()
-
-# ============================================================
-# END OF PART 1 — paste Part 2 immediately below this line
 # ============================================================
 # ============================================================
 # Timber AI Assistant V27 — PART 2 of 3
@@ -1059,9 +1056,10 @@ with tab_odd:
         ctu = st.session_state.odd_ctu; cwu = st.session_state.odd_cwu
         cthk_mm = float(cthk_val) * 25.4 if ctu == "inch" else float(cthk_val)
         cwid_mm  = float(cwid_val)  * 25.4 if cwu == "inch" else float(cwid_val)
-        # Sort so smaller = thickness, larger = width — entry order doesn't matter
+        # Sort: smaller = thickness, larger = width — entry order doesn't matter
         cthk_mm, cwid_mm = sorted([cthk_mm, cwid_mm])
-        sug = suggest_quote_size(cthk_mm, cwid_mm)
+        # suggest_quote_size expects (cust_w_mm, cust_h_mm) — width first, thickness second
+        sug = suggest_quote_size(cwid_mm, cthk_mm)
 
         # Suggest nearest standard ft from customer length
         clen_val = st.session_state.odd_clen
@@ -1617,3 +1615,5 @@ with tab_hist:
 # ============================================================
 st.markdown("---")
 st.caption("Timber AI Assistant V27  · ALVIN  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
+# ============================================================
+# END OF PART 1 — paste Part 2 immediately below this line
