@@ -84,82 +84,176 @@ FT_TO_M      = {
 TIMBER_DENSITY_KG_M3 = 706  # calibrated to trade standard: 7200 / (w_inch * h_inch * l_ft)
 
 STANDARD_SIZES = [
-    # (width_mm, thickness_mm, display_label, nom_w_inch, nom_h_inch)
-    # Display label = planed size (sawn - 5mm each dim), except 1x1 stays 20x20
-    # Nominal inches used for 7200 formula — unchanged
-    # 1" group
-    (25,  25,  '20 x 20mm (1" x 1")',    1,  1),   # QB — keep as 20x20
-    # 2" group
-    (51,  25,  '45 x 20mm (2" x 1")',    2,  1),   # QB
-    (51,  51,  '45 x 45mm (2" x 2")',    2,  2),   # QB
-    # 3" group
-    (76,  25,  '70 x 20mm (3" x 1")',    3,  1),   # QB
-    (76,  51,  '70 x 45mm (3" x 2")',    3,  2),   # QB
-    (76,  76,  '70 x 70mm (3" x 3")',    3,  3),   # QB
-    # 4" group
-    (102, 25,  '95 x 20mm (4" x 1")',    4,  1),   # QB
-    (102, 51,  '95 x 45mm (4" x 2")',    4,  2),   # QB
-    (102, 76,  '95 x 70mm (4" x 3")',    4,  3),   # QB
-    (102, 102, '95 x 95mm (4" x 4")',    4,  4),   # QB
-    # 5" group — ODD SIZE only
-    (127, 25,  '120 x 20mm (5" x 1")',   None, None),
-    (127, 51,  '120 x 45mm (5" x 2")',   None, None),
-    (127, 76,  '120 x 70mm (5" x 3")',   None, None),
-    (127, 102, '120 x 95mm (5" x 4")',   None, None),
-    (127, 127, '120 x 120mm (5" x 5")',  None, None),
-    # 6" group
-    (152, 25,  '145 x 20mm (6" x 1")',   6,  1),   # QB
-    (152, 51,  '145 x 45mm (6" x 2")',   6,  2),   # QB
-    (152, 76,  '145 x 70mm (6" x 3")',   6,  3),   # QB
-    (152, 102, '145 x 95mm (6" x 4")',   6,  4),   # QB
-    (152, 127, '145 x 120mm (6" x 5")',  6,  5),   # QB
-    (152, 152, '145 x 145mm (6" x 6")',  6,  6),   # QB
-    # 7" group — ODD SIZE only
-    (178, 25,  '170 x 20mm (7" x 1")',   None, None),
-    (178, 51,  '170 x 45mm (7" x 2")',   None, None),
-    (178, 76,  '170 x 70mm (7" x 3")',   None, None),
-    (178, 102, '170 x 95mm (7" x 4")',   None, None),
-    (178, 152, '170 x 145mm (7" x 6")',  None, None),
-    (178, 178, '170 x 170mm (7" x 7")',  None, None),
-    # 8" group
-    (203, 25,  '195 x 20mm (8" x 1")',   8,  1),   # QB
-    (203, 51,  '195 x 45mm (8" x 2")',   8,  2),   # QB
-    (203, 76,  '195 x 70mm (8" x 3")',   8,  3),   # QB
-    (203, 102, '195 x 95mm (8" x 4")',   8,  4),   # QB
-    # 10" group
-    (254, 25,  '245 x 20mm (10" x 1")',  10, 1),   # QB
-    (254, 51,  '245 x 45mm (10" x 2")',  10, 2),   # QB
-    (254, 76,  '245 x 70mm (10" x 3")',  10, 3),   # QB
-    # 11" group — ODD SIZE only
-    (279, 25,  '270 x 20mm (11" x 1")',  None, None),
-    (279, 51,  '270 x 45mm (11" x 2")',  None, None),
-    (279, 76,  '270 x 70mm (11" x 3")',  None, None),
-    (279, 102, '270 x 95mm (11" x 4")',  None, None),
-    (279, 152, '270 x 145mm (11" x 6")', None, None),
-    # 12" group
-    (305, 25,  '300 x 20mm (12" x 1")',  12, 1),   # QB
-    (305, 51,  '300 x 45mm (12" x 2")',  12, 2),   # QB
-    (305, 76,  '300 x 70mm (12" x 3")',  12, 3),   # QB
-    (305, 102, '300 x 95mm (12" x 4")',  12, 4),   # QB
-    (305, 127, '300 x 120mm (12" x 5")', 12, 5),   # QB
-    (305, 152, '300 x 145mm (12" x 6")', 12, 6),   # QB
-    (305, 203, '300 x 195mm (12" x 8")', 12, 8),   # QB
+    # (sawn_w_mm, sawn_h_mm, display_label, nom_w_inch, nom_h_inch)
+    # sawn = nom * 25mm  |  planed = sawn - 5mm
+    # Exceptions: 13" sawn=330/planed=325 (override); 14" sawn=350/planed=345 (confirmed)
+    # All sizes QB + Odd Size
+
+    # 1" group — sawn 25mm / planed 20mm
+    (25,  25,  '20 x 20mm (1" x 1")',    1,  1),
+
+    # 2" group — sawn 50mm / planed 45mm
+    (50,  25,  '45 x 20mm (2" x 1")',    2,  1),
+    (50,  50,  '45 x 45mm (2" x 2")',    2,  2),
+
+    # 3" group — sawn 75mm / planed 70mm
+    (75,  25,  '70 x 20mm (3" x 1")',    3,  1),
+    (75,  50,  '70 x 45mm (3" x 2")',    3,  2),
+    (75,  75,  '70 x 70mm (3" x 3")',    3,  3),
+
+    # 4" group — sawn 100mm / planed 95mm
+    (100, 25,  '95 x 20mm (4" x 1")',    4,  1),
+    (100, 50,  '95 x 45mm (4" x 2")',    4,  2),
+    (100, 75,  '95 x 70mm (4" x 3")',    4,  3),
+    (100, 100, '95 x 95mm (4" x 4")',    4,  4),
+
+    # 5" group — sawn 125mm / planed 120mm
+    (125, 25,  '120 x 20mm (5" x 1")',   5,  1),
+    (125, 50,  '120 x 45mm (5" x 2")',   5,  2),
+    (125, 75,  '120 x 70mm (5" x 3")',   5,  3),
+    (125, 100, '120 x 95mm (5" x 4")',   5,  4),
+    (125, 125, '120 x 120mm (5" x 5")',  5,  5),
+
+    # 6" group — sawn 150mm / planed 145mm
+    (150, 25,  '145 x 20mm (6" x 1")',   6,  1),
+    (150, 50,  '145 x 45mm (6" x 2")',   6,  2),
+    (150, 75,  '145 x 70mm (6" x 3")',   6,  3),
+    (150, 100, '145 x 95mm (6" x 4")',   6,  4),
+    (150, 125, '145 x 120mm (6" x 5")',  6,  5),
+    (150, 150, '145 x 145mm (6" x 6")',  6,  6),
+
+    # 7" group — sawn 175mm / planed 170mm
+    (175, 25,  '170 x 20mm (7" x 1")',   7,  1),
+    (175, 50,  '170 x 45mm (7" x 2")',   7,  2),
+    (175, 75,  '170 x 70mm (7" x 3")',   7,  3),
+    (175, 100, '170 x 95mm (7" x 4")',   7,  4),
+    (175, 125, '170 x 120mm (7" x 5")',  7,  5),
+    (175, 150, '170 x 145mm (7" x 6")',  7,  6),
+    (175, 175, '170 x 170mm (7" x 7")',  7,  7),
+
+    # 8" group — sawn 200mm / planed 195mm
+    (200, 25,  '195 x 20mm (8" x 1")',   8,  1),
+    (200, 50,  '195 x 45mm (8" x 2")',   8,  2),
+    (200, 75,  '195 x 70mm (8" x 3")',   8,  3),
+    (200, 100, '195 x 95mm (8" x 4")',   8,  4),
+    (200, 125, '195 x 120mm (8" x 5")',  8,  5),
+    (200, 150, '195 x 145mm (8" x 6")',  8,  6),
+    (200, 175, '195 x 170mm (8" x 7")',  8,  7),
+    (200, 200, '195 x 195mm (8" x 8")',  8,  8),
+
+    # 9" group — sawn 225mm / planed 220mm (Alvin confirmed)
+    (225, 25,  '220 x 20mm (9" x 1")',   9,  1),
+    (225, 50,  '220 x 45mm (9" x 2")',   9,  2),
+    (225, 75,  '220 x 70mm (9" x 3")',   9,  3),
+    (225, 100, '220 x 95mm (9" x 4")',   9,  4),
+    (225, 125, '220 x 120mm (9" x 5")',  9,  5),
+    (225, 150, '220 x 145mm (9" x 6")',  9,  6),
+    (225, 175, '220 x 170mm (9" x 7")',  9,  7),
+    (225, 200, '220 x 195mm (9" x 8")',  9,  8),
+    (225, 225, '220 x 220mm (9" x 9")',  9,  9),
+
+    # 10" group — sawn 250mm / planed 245mm
+    (250, 25,  '245 x 20mm (10" x 1")',  10, 1),
+    (250, 50,  '245 x 45mm (10" x 2")',  10, 2),
+    (250, 75,  '245 x 70mm (10" x 3")',  10, 3),
+    (250, 100, '245 x 95mm (10" x 4")',  10, 4),
+    (250, 125, '245 x 120mm (10" x 5")', 10, 5),
+    (250, 150, '245 x 145mm (10" x 6")', 10, 6),
+    (250, 175, '245 x 170mm (10" x 7")', 10, 7),
+    (250, 200, '245 x 195mm (10" x 8")', 10, 8),
+    (250, 225, '245 x 220mm (10" x 9")', 10, 9),
+    (250, 250, '245 x 245mm (10" x 10")',10,10),
+
+    # 11" group — sawn 275mm / planed 270mm
+    (275, 25,  '270 x 20mm (11" x 1")',  11, 1),
+    (275, 50,  '270 x 45mm (11" x 2")',  11, 2),
+    (275, 75,  '270 x 70mm (11" x 3")',  11, 3),
+    (275, 100, '270 x 95mm (11" x 4")',  11, 4),
+    (275, 125, '270 x 120mm (11" x 5")', 11, 5),
+    (275, 150, '270 x 145mm (11" x 6")', 11, 6),
+    (275, 175, '270 x 170mm (11" x 7")', 11, 7),
+    (275, 200, '270 x 195mm (11" x 8")', 11, 8),
+    (275, 225, '270 x 220mm (11" x 9")', 11, 9),
+    (275, 250, '270 x 245mm (11" x 10")',11,10),
+    (275, 275, '270 x 270mm (11" x 11")',11,11),
+
+    # 12" group — sawn 300mm / planed 295mm (Alvin confirmed)
+    (300, 25,  '295 x 20mm (12" x 1")',  12, 1),
+    (300, 50,  '295 x 45mm (12" x 2")',  12, 2),
+    (300, 75,  '295 x 70mm (12" x 3")',  12, 3),
+    (300, 100, '295 x 95mm (12" x 4")',  12, 4),
+    (300, 125, '295 x 120mm (12" x 5")', 12, 5),
+    (300, 150, '295 x 145mm (12" x 6")', 12, 6),
+    (300, 175, '295 x 170mm (12" x 7")', 12, 7),
+    (300, 200, '295 x 195mm (12" x 8")', 12, 8),
+    (300, 225, '295 x 220mm (12" x 9")', 12, 9),
+    (300, 250, '295 x 245mm (12" x 10")',12,10),
+    (300, 275, '295 x 270mm (12" x 11")',12,11),
+    (300, 300, '295 x 295mm (12" x 12")',12,12),
+
+    # 13" group — sawn 330mm / planed 325mm (Alvin override)
+    (330, 25,  '325 x 20mm (13" x 1")',  13, 1),
+    (330, 50,  '325 x 45mm (13" x 2")',  13, 2),
+    (330, 75,  '325 x 70mm (13" x 3")',  13, 3),
+    (330, 100, '325 x 95mm (13" x 4")',  13, 4),
+    (330, 125, '325 x 120mm (13" x 5")', 13, 5),
+    (330, 150, '325 x 145mm (13" x 6")', 13, 6),
+    (330, 175, '325 x 170mm (13" x 7")', 13, 7),
+    (330, 200, '325 x 195mm (13" x 8")', 13, 8),
+    (330, 225, '325 x 220mm (13" x 9")', 13, 9),
+    (330, 250, '325 x 245mm (13" x 10")',13,10),
+    (330, 275, '325 x 270mm (13" x 11")',13,11),
+    (330, 300, '325 x 295mm (13" x 12")',13,12),
+    (330, 330, '325 x 325mm (13" x 13")',13,13),
+
+    # 14" group — sawn 350mm / planed 345mm (Alvin confirmed)
+    (350, 25,  '345 x 20mm (14" x 1")',  14, 1),
+    (350, 50,  '345 x 45mm (14" x 2")',  14, 2),
+    (350, 75,  '345 x 70mm (14" x 3")',  14, 3),
+    (350, 100, '345 x 95mm (14" x 4")',  14, 4),
+    (350, 125, '345 x 120mm (14" x 5")', 14, 5),
+    (350, 150, '345 x 145mm (14" x 6")', 14, 6),
+    (350, 175, '345 x 170mm (14" x 7")', 14, 7),
+    (350, 200, '345 x 195mm (14" x 8")', 14, 8),
+    (350, 225, '345 x 220mm (14" x 9")', 14, 9),
+    (350, 250, '345 x 245mm (14" x 10")',14,10),
+    (350, 275, '345 x 270mm (14" x 11")',14,11),
+    (350, 300, '345 x 295mm (14" x 12")',14,12),
+    (350, 330, '345 x 325mm (14" x 13")',14,13),
+    (350, 350, '345 x 345mm (14" x 14")',14,14),
 ]
+
 
 # Trade mm → nominal inch lookup (for odd size 7200 formula)
 TRADE_MM_TO_INCH = {
-    20:1, 25:1,
-    43:2, 45:2, 50:2, 51:2,
-    70:3, 75:3, 76:3,
-    93:4, 95:4, 100:4, 102:4,
+    # 1"
+    20:1,  25:1,
+    # 2"
+    43:2,  45:2,  50:2,  51:2,
+    # 3"
+    70:3,  75:3,  76:3,
+    # 4"
+    93:4,  95:4,  100:4, 102:4,
+    # 5"
     117:5, 120:5, 125:5, 127:5,
+    # 6"
     143:6, 145:6, 150:6, 152:6,
+    # 7"
     168:7, 170:7, 175:7, 178:7,
+    # 8"
     193:8, 195:8, 200:8, 203:8,
+    # 9"  — sawn 225mm / planed 220mm
     218:9, 220:9, 225:9, 229:9,
+    # 10"
     243:10, 245:10, 250:10, 254:10,
+    # 11"
     268:11, 270:11, 275:11, 279:11,
+    # 12" — sawn 300mm / planed 295mm (also legacy 305/300)
     293:12, 295:12, 300:12, 305:12,
+    # 13" — sawn 330mm / planed 325mm (Alvin override)
+    323:13, 325:13, 330:13,
+    # 14" — sawn 350mm / planed 345mm (Alvin confirmed)
+    343:14, 345:14, 350:14,
 }
 
 def mm_to_nominal_inch(mm):
@@ -183,10 +277,10 @@ def m_to_nominal_ft(l_m, ft_list=None):
     return sorted(ft_list)[-1]
 
 # QB sizes only (exclude 5", 7", 11" odd groups)
-QB_SIZES = [s for s in STANDARD_SIZES if s[3] is not None]
+QB_SIZES  = STANDARD_SIZES   # all 105 sizes in QB dropdown
+ODD_SIZES = STANDARD_SIZES   # all 105 sizes in Odd Size suggest
 
 # All sizes for Odd Size dropdown (full list)
-ODD_SIZES = STANDARD_SIZES
 
 def size_options_for_dropdown():
     return [s[2] for s in QB_SIZES]
@@ -355,6 +449,9 @@ species_rate = {
     "Mixed Keruing": mkeruing_rate, "Pure Keruing": pkeruing_rate
 }
 st.divider()
+
+# ============================================================
+# END OF PART 1 — paste Part 2 immediately below this line
 # ============================================================
 # ============================================================
 # Timber AI Assistant V27 — PART 2 of 3
@@ -1030,8 +1127,6 @@ with tab_odd:
                     st.session_state["odd_clu"]  = "m"
                 st.session_state["odd_ctu"] = "mm"
                 st.session_state["odd_cwu"] = "mm"
-                # Increment key counter → customer size widgets get brand new keys
-                # → render fresh at value= args (same pattern as Reset Rates)
                 st.session_state["qf_fill_key"] += 1
                 st.rerun()
             else:
@@ -1056,9 +1151,8 @@ with tab_odd:
         ctu = st.session_state.odd_ctu; cwu = st.session_state.odd_cwu
         cthk_mm = float(cthk_val) * 25.4 if ctu == "inch" else float(cthk_val)
         cwid_mm  = float(cwid_val)  * 25.4 if cwu == "inch" else float(cwid_val)
-        # Sort: smaller = thickness, larger = width — entry order doesn't matter
+        # Sort: smaller=thickness, larger=width; suggest expects (width, thickness)
         cthk_mm, cwid_mm = sorted([cthk_mm, cwid_mm])
-        # suggest_quote_size expects (cust_w_mm, cust_h_mm) — width first, thickness second
         sug = suggest_quote_size(cwid_mm, cthk_mm)
 
         # Suggest nearest standard ft from customer length
@@ -1615,5 +1709,3 @@ with tab_hist:
 # ============================================================
 st.markdown("---")
 st.caption("Timber AI Assistant V27  · ALVIN  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
-# ============================================================
-# END OF PART 1 — paste Part 2 immediately below this line
