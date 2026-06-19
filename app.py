@@ -81,6 +81,12 @@ FT_TO_M      = {
     10:3.0, 11:3.3, 12:3.6, 13:3.9, 14:4.2, 15:4.5, 16:4.8, 17:5.1,
     18:5.4, 19:5.7, 20:6.0, 21:6.4, 22:6.6,
 }
+
+def ft_to_m_display(ft):
+    """Return m label for any ft value — integer uses trade lookup, half-ft computed."""
+    if ft in FT_TO_M:
+        return FT_TO_M[ft]
+    return round(math.floor(ft * 0.3048 * 100) / 100, 2)
 TIMBER_DENSITY_KG_M3 = 706  # calibrated to trade standard: 7200 / (w_inch * h_inch * l_ft)
 
 STANDARD_SIZES = [
@@ -381,7 +387,7 @@ def suggest_quote_size(cust_w_mm, cust_h_mm):
 
 def pcs_per_ton(w_mm, h_mm, ft):
     """Calculate pcs/ton from dimensions. Uses volume-weight method."""
-    m   = FT_TO_M[ft]
+    m   = ft_to_m_display(ft)
     vol = (w_mm / 1000) * (h_mm / 1000) * m   # m³ per piece
     return max(round(1 / (vol * TIMBER_DENSITY_KG_M3 / 1000)), 1)
 
@@ -1227,7 +1233,7 @@ with tab_odd:
 
         if sug:
             sug_w, sug_h, sug_lbl, _, _ = sug
-            sug_full = f"{sug_lbl} × {sug_ft}ft ({FT_TO_M[sug_ft]}m)"
+            sug_full = f"{sug_lbl} × {sug_ft}ft ({ft_to_m_display(sug_ft)}m)"
             st.markdown(
                 f'<div style="background:var(--color-background-info);border:0.5px solid var(--color-border-tertiary);'
                 f'border-radius:var(--border-radius-md);padding:10px 16px;margin:10px 0">'
