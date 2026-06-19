@@ -221,7 +221,54 @@ STANDARD_SIZES = [
     (350, 300, '345 x 295mm (14" x 12")',14,12),
     (350, 330, '345 x 325mm (14" x 13")',14,13),
     (350, 350, '345 x 345mm (14" x 14")',14,14),
+
+    # 15" group — sawn 375mm / planed 370mm (Alvin confirmed)
+    (375, 38,  '370 x 33mm (15" x 1.5")',15, 1.5),
+    (375, 25,  '370 x 20mm (15" x 1")',  15, 1),
+    (375, 50,  '370 x 45mm (15" x 2")',  15, 2),
+    (375, 75,  '370 x 70mm (15" x 3")',  15, 3),
+    (375, 100, '370 x 95mm (15" x 4")',  15, 4),
+    (375, 125, '370 x 120mm (15" x 5")', 15, 5),
+    (375, 150, '370 x 145mm (15" x 6")', 15, 6),
+    (375, 175, '370 x 170mm (15" x 7")', 15, 7),
+    (375, 200, '370 x 195mm (15" x 8")', 15, 8),
+    (375, 225, '370 x 220mm (15" x 9")', 15, 9),
+    (375, 250, '370 x 245mm (15" x 10")',15,10),
+    (375, 275, '370 x 270mm (15" x 11")',15,11),
+    (375, 300, '370 x 295mm (15" x 12")',15,12),
+    (375, 330, '370 x 325mm (15" x 13")',15,13),
+    (375, 350, '370 x 345mm (15" x 14")',15,14),
+    (375, 375, '370 x 370mm (15" x 15")',15,15),
+
+    # 16" group — sawn 400mm / planed 395mm
+    (400, 38,  '395 x 33mm (16" x 1.5")',16, 1.5),
+    (400, 25,  '395 x 20mm (16" x 1")',  16, 1),
+    (400, 50,  '395 x 45mm (16" x 2")',  16, 2),
+    (400, 75,  '395 x 70mm (16" x 3")',  16, 3),
+    (400, 100, '395 x 95mm (16" x 4")',  16, 4),
+    (400, 125, '395 x 120mm (16" x 5")', 16, 5),
+    (400, 150, '395 x 145mm (16" x 6")', 16, 6),
+    (400, 175, '395 x 170mm (16" x 7")', 16, 7),
+    (400, 200, '395 x 195mm (16" x 8")', 16, 8),
+    (400, 225, '395 x 220mm (16" x 9")', 16, 9),
+    (400, 250, '395 x 245mm (16" x 10")',16,10),
+    (400, 275, '395 x 270mm (16" x 11")',16,11),
+    (400, 300, '395 x 295mm (16" x 12")',16,12),
+    (400, 330, '395 x 325mm (16" x 13")',16,13),
+    (400, 350, '395 x 345mm (16" x 14")',16,14),
+    (400, 375, '395 x 370mm (16" x 15")',16,15),
+    (400, 400, '395 x 395mm (16" x 16")',16,16),
 ]
+
+# 1.5" thickness entries — add to all existing groups 3" and above
+_1p5_entries = []
+for _nw, _sw in [(3,75),(4,100),(5,125),(6,150),(7,175),(8,200),(9,225),
+                  (10,250),(11,275),(12,300),(13,330),(14,350)]:
+    _pw = {3:70,4:95,5:120,6:145,7:170,8:195,9:220,
+           10:245,11:270,12:295,13:325,14:345}[_nw]
+    _1p5_entries.append((_sw, 38, f'{_pw} x 33mm ({_nw}" x 1.5")', _nw, 1.5))
+
+STANDARD_SIZES = STANDARD_SIZES + _1p5_entries
 
 
 # Trade mm → nominal inch lookup (for odd size 7200 formula)
@@ -254,6 +301,12 @@ TRADE_MM_TO_INCH = {
     323:13, 325:13, 330:13,
     # 14" — sawn 350mm / planed 345mm (Alvin confirmed)
     343:14, 345:14, 350:14,
+    # 15" — sawn 375mm / planed 370mm (Alvin confirmed)
+    368:15, 370:15, 375:15,
+    # 16" — sawn 400mm / planed 395mm
+    393:16, 395:16, 400:16,
+    # 1.5" — sawn 38mm / planed 33mm
+    33:1.5, 38:1.5,
 }
 
 def mm_to_nominal_inch(mm):
@@ -275,6 +328,14 @@ def m_to_nominal_ft(l_m, ft_list=None):
         if f >= ft - 0.01:
             return f
     return sorted(ft_list)[-1]
+
+def m_to_half_ft(l_m):
+    """Convert metres to ft, ceiling to nearest 0.5ft.
+    Used for free type length — gives user more granular options.
+    e.g. 1.6m → 5.249ft → 5.5ft
+    """
+    ft = l_m * 3.28084
+    return math.ceil(ft * 2) / 2
 
 # QB sizes only (exclude 5", 7", 11" odd groups)
 QB_SIZES  = STANDARD_SIZES   # all 105 sizes in QB dropdown
@@ -1160,7 +1221,7 @@ with tab_odd:
         clu      = st.session_state.odd_clu
         if clen_val:
             clen_m   = float(clen_val) if clu == "m" else float(clen_val) * 0.3048
-            sug_ft   = m_to_nominal_ft(clen_m, ODD_FT)
+            sug_ft   = m_to_half_ft(clen_m)
         else:
             sug_ft   = 8  # default
 
@@ -1307,7 +1368,7 @@ with tab_odd:
 
     # Live price preview
     if qw_mm and qh_mm and q_len_m_use and not _val_errors:
-        ft_for_calc = m_to_nominal_ft(q_len_m_use, ODD_FT) if selected_qft is None else selected_qft
+        ft_for_calc = m_to_half_ft(q_len_m_use) if selected_qft is None else selected_qft
         raw_pcs, pcs_fl, price_preview = calc_from_mm(qw_mm, qh_mm, ft_for_calc, odd_rate)
         line_preview = round(price_preview * st.session_state.odd_qty, 2)
         nom_w_disp = mm_to_nominal_inch(qw_mm); nom_h_disp = mm_to_nominal_inch(qh_mm)
@@ -1330,7 +1391,7 @@ with tab_odd:
                     if ctu == "inch"
                     else f"{cthk}mm x {cwid}mm x {clen}{clu}"
                 )
-                ft_for_add  = m_to_nominal_ft(q_len_m_use, ODD_FT) if selected_qft is None else selected_qft
+                ft_for_add  = m_to_half_ft(q_len_m_use) if selected_qft is None else selected_qft
                 raw2, pcs_fl2, price2 = calc_from_mm(qw_mm, qh_mm, ft_for_add, odd_rate)
                 line_tot2   = round(price2 * st.session_state.odd_qty, 2)
                 st.session_state.odd_items.append({
@@ -1708,4 +1769,4 @@ with tab_hist:
 # FOOTER
 # ============================================================
 st.markdown("---")
-st.caption("Timber AI Assistant V29  · ALVIN  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
+st.caption("Timber AI Assistant V27  · ALVIN  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
