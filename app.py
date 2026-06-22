@@ -1214,11 +1214,11 @@ with tab_odd:
     cc1, cc2, cc3, cc4, cc5, cc6 = st.columns(6)
     _fk = st.session_state.qf_fill_key
     with cc1: st.session_state.odd_cthk = st.number_input("Thickness", min_value=None, value=st.session_state.odd_cthk, placeholder="e.g. 80",  step=0.5, format="%.1f", key=f"odd_cthk_inp_{_fk}")
-    with cc2: st.session_state.odd_ctu  = st.selectbox("Unit",  ["mm","inch"], index=["mm","inch"].index(st.session_state.odd_ctu), key="odd_ctu_sel")
+    with cc2: st.session_state.odd_ctu  = st.selectbox("Unit",  ["mm","inch"], index=["mm","inch"].index(st.session_state.odd_ctu), key=f"odd_ctu_sel_{_fk}")
     with cc3: st.session_state.odd_cwid = st.number_input("Width",     min_value=None, value=st.session_state.odd_cwid, placeholder="e.g. 125", step=0.5, format="%.1f", key=f"odd_cwid_inp_{_fk}")
-    with cc4: st.session_state.odd_cwu  = st.selectbox("Unit ", ["mm","inch"], index=["mm","inch"].index(st.session_state.odd_cwu), key="odd_cwu_sel")
+    with cc4: st.session_state.odd_cwu  = st.selectbox("Unit ", ["mm","inch"], index=["mm","inch"].index(st.session_state.odd_cwu), key=f"odd_cwu_sel_{_fk}")
     with cc5: st.session_state.odd_clen = st.number_input("Length",    min_value=None, value=st.session_state.odd_clen, placeholder="e.g. 2.4", step=0.1, format="%.1f", key=f"odd_clen_inp_{_fk}")
-    with cc6: st.session_state.odd_clu  = st.selectbox("Unit  ", ["m","ft"], index=["m","ft"].index(st.session_state.odd_clu), key="odd_clu_sel")
+    with cc6: st.session_state.odd_clu  = st.selectbox("Unit  ", ["m","ft"], index=["m","ft"].index(st.session_state.odd_clu), key=f"odd_clu_sel_{_fk}")
 
     # ── Suggest nearest quote size ────────────────────────────
     cthk_val = st.session_state.odd_cthk
