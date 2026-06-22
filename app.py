@@ -455,28 +455,37 @@ _defaults = {
     "odd_qthk": None, "odd_qwid": None, "odd_qlen": None,
     "odd_ctu": "mm", "odd_cwu": "mm", "odd_clu": "m",
     "odd_sp":  "Kapur",
-    "odd_qsize_label": None,   # selected quote size label from dropdown
-    "odd_qft": 8,              # selected quote length ft
-    "odd_suggest": None,       # suggested quote size label
-    "odd_accept_count": 0,     # incremented on Accept to force fresh widget key
+    "odd_qsize_label": None,
+    "odd_qft": 8,
+    "odd_suggest": None,
+    "odd_accept_count": 0,
     "odd_qty": 1,
     "odd_accepted": False,
+    "odd_acc_lbl": None, "odd_acc_full": None,
+    "odd_acc_w_mm": None, "odd_acc_h_mm": None, "odd_acc_ft": None,
+    "odd_qmode": "dropdown",
+    "odd_qthk_free": None, "odd_qwid_free": None, "odd_qlen_free": None,
+    "odd_qlu_free": "m",
+    "odd_quickfill": "",
+    "qf_fill_key": 0,
     "cust_name": "", "cust_mobile": "",
     "q_ready":   False, "q_reply":   "", "q_total":   0.0, "q_cost":   0.0, "q_nitem": 0, "q_log":   [],
     "odd_ready": False, "odd_reply": "", "odd_total": 0.0, "odd_cost": 0.0, "odd_nitem":0, "odd_log": [],
     "ply_ready": False, "ply_reply": "", "ply_total": 0.0, "ply_cost": 0.0, "ply_nitem":0, "ply_log": [],
     "hist_search_val": "",
     "rate_reset_key": 0,
-    "odd_quickfill": "",
-    "odd_qlu_free": "m",
-    "qf_fill_key": 0,
 }
 for _k, _v in _defaults.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
 
 def reset_all():
-    for k in list(st.session_state.keys()): del st.session_state[k]
+    """Full factory reset — clears all state, rates snap back to defaults."""
+    _prev_rk = st.session_state.get("rate_reset_key", 0)
+    for k in list(st.session_state.keys()):
+        del st.session_state[k]
+    # Set rate_reset_key to a new value so rate widgets get fresh keys
+    st.session_state["rate_reset_key"] = _prev_rk + 1
     st.rerun()
 
 # ============================================================
@@ -1344,16 +1353,7 @@ with tab_odd:
     odd_all_labels = odd_size_options_for_dropdown()
     ft_labels_odd  = [f"{ft} ft  ({FT_TO_M[ft]} m)" for ft in ODD_FT]
 
-    # Toggle: dropdown vs free type
-    if "odd_qmode" not in st.session_state:
-        st.session_state.odd_qmode = "dropdown"
-    if "odd_qthk_free" not in st.session_state:
-        st.session_state.odd_qthk_free = None
-    if "odd_qwid_free" not in st.session_state:
-        st.session_state.odd_qwid_free = None
-    if "odd_qlen_free" not in st.session_state:
-        st.session_state.odd_qlen_free = None
-
+    # Toggle: dropdown vs free type — initialised in _defaults
     st.markdown("""
     <style>
     div[data-testid="stRadio"] label { font-size:15px !important; font-weight:500 !important; }
