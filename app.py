@@ -1513,13 +1513,22 @@ with tab_odd:
                 st.error("Please fill in all customer size fields and quote size before adding.")
     with ob2:
         if st.button("Clear Inputs", use_container_width=True):
-            for k in ["odd_cthk","odd_cwid","odd_clen","odd_qsize_label","odd_suggest",
-                      "odd_qthk_free","odd_qwid_free","odd_qlen_free","odd_acc_lbl"]:
-                st.session_state[k] = None
-            st.session_state.odd_accepted = False
-            st.session_state.odd_qft = 8
-            st.session_state.odd_qlu_free = "m"
-            st.session_state.odd_quickfill = ""
+            # Reset all input-related keys to their _defaults values
+            _input_keys = {
+                "odd_cthk": None, "odd_cwid": None, "odd_clen": None,
+                "odd_ctu": "mm",  "odd_cwu": "mm",  "odd_clu": "m",
+                "odd_qsize_label": None, "odd_suggest": None,
+                "odd_qft": 8, "odd_qty": 1,
+                "odd_qmode": "dropdown",
+                "odd_qthk_free": None, "odd_qwid_free": None,
+                "odd_qlen_free": None, "odd_qlu_free": "m",
+                "odd_accepted": False,
+                "odd_acc_lbl": None, "odd_acc_full": None,
+                "odd_acc_w_mm": None, "odd_acc_h_mm": None, "odd_acc_ft": None,
+                "odd_quickfill": "",
+            }
+            for k, v in _input_keys.items():
+                st.session_state[k] = v
             st.session_state.qf_fill_key += 1
             st.rerun()
 
@@ -1866,4 +1875,4 @@ with tab_hist:
 # FOOTER
 # ============================================================
 st.markdown("---")
-st.caption("Timber AI Assistant V29  · ALVIN  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
+st.caption("Timber AI Assistant V27  · ALVIN  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
