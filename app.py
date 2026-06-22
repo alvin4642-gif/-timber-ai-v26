@@ -1306,18 +1306,19 @@ with tab_odd:
                 raw_a, pcs_fl_a, price_a2 = calc_from_mm(acc_w, acc_h, acc_ft, odd_rate, nom_w_a, nom_h_a)
                 line_tot_a = round(price_a2 * st.session_state.odd_qty, 2)
                 st.session_state.odd_items.append({
-                    "species":    st.session_state.odd_sp,
-                    "size":       f"{acc_lbl} × {acc_ft}ft ({ft_to_m_display(acc_ft)}m)",
-                    "cust_size":  cust_size,
+                    "species":     st.session_state.odd_sp,
+                    "size":        f"{acc_lbl} × {acc_ft}ft ({ft_to_m_display(acc_ft)}m)",
+                    "quote_size":  f"{acc_lbl} × {acc_ft}ft ({ft_to_m_display(acc_ft)}m)",
+                    "cust_size":   cust_size,
                     "w_mm": acc_w, "h_mm": acc_h, "ft": acc_ft,
                     "nom_w": nom_w_a, "nom_h": nom_h_a,
-                    "rate":       odd_rate,
-                    "pcs_raw":    round(raw_a, 3),
-                    "pcs_floor":  pcs_fl_a,
-                    "price":      price_a2,
-                    "qty":        st.session_state.odd_qty,
-                    "line_total": line_tot_a,
-                    "small_qty":  st.session_state.odd_qty < SMALL_QTY,
+                    "rate":        odd_rate,
+                    "pcs_per_ton": round(raw_a, 4),
+                    "pcs_floor":   pcs_fl_a,
+                    "price":       price_a2,
+                    "qty":         st.session_state.odd_qty,
+                    "line_total":  line_tot_a,
+                    "small_qty":   st.session_state.odd_qty < SMALL_QTY,
                 })
                 # Reset accepted state and inputs
                 st.session_state.odd_accepted    = False
