@@ -1247,6 +1247,16 @@ with tab_odd:
             if st.button(f"✅ Accept — {sug_full}", key="odd_accept_suggest"):
                 st.session_state.odd_qsize_label = sug_lbl
                 st.session_state.odd_qft = sug_ft
+                # If sug_ft is a half-ft value, switch to free type mode
+                # and populate the free type length field (dropdown only has integers)
+                if sug_ft != int(sug_ft):
+                    st.session_state.odd_qmode = "free"
+                    st.session_state.odd_qthk_free = float(sug_h)
+                    st.session_state.odd_qwid_free = float(sug_w)
+                    st.session_state.odd_qlen_free = sug_ft
+                    st.session_state.odd_qlu_free  = "ft"
+                else:
+                    st.session_state.odd_qmode = "dropdown"
                 st.rerun()
 
     st.markdown("**② Your Quote Size** — select from dropdown or type freely (used for pricing)")
@@ -1285,7 +1295,7 @@ with tab_odd:
             _qsize_idx = odd_all_labels.index(st.session_state.odd_qsize_label)
 
         _ft_labels_idx = 0
-        _sug_ft_str = f"{st.session_state.odd_qft} ft  ({FT_TO_M.get(st.session_state.odd_qft, 2.4)} m)"
+        _sug_ft_str = f"{st.session_state.odd_qft} ft  ({ft_to_m_display(st.session_state.odd_qft)} m)"
         if _sug_ft_str in ft_labels_odd:
             _ft_labels_idx = ft_labels_odd.index(_sug_ft_str)
 
