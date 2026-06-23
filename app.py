@@ -526,9 +526,6 @@ species_rate = {
     "Mixed Keruing": mkeruing_rate, "Pure Keruing": pkeruing_rate
 }
 st.divider()
-
-# ============================================================
-# END OF PART 1 — paste Part 2 immediately below this line
 # ============================================================
 # ============================================================
 # Timber AI Assistant V27 — PART 2 of 3
@@ -1190,7 +1187,13 @@ with tab_odd:
     _rrk = st.session_state.rate_reset_key
     _fk  = st.session_state.qf_fill_key
     r0c1, r0c2, r0c3, r0c4 = st.columns([2, 2, 1, 1])
+    _prev_sp = st.session_state.odd_sp
     with r0c1: st.session_state.odd_sp = st.selectbox("Species", SPECIES, index=SPECIES.index(st.session_state.odd_sp), key="odd_sp_sel")
+    # Auto-switch rate when species changes
+    if st.session_state.odd_sp != _prev_sp:
+        st.session_state.rate_reset_key += 1
+        st.rerun()
+    _rrk = st.session_state.rate_reset_key  # re-read after possible increment
     with r0c2: odd_rate = st.number_input("Rate (S$/ton)", min_value=0, value=species_rate[st.session_state.odd_sp], step=50, key=f"odd_rate_{_rrk}")
     with r0c3:
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
@@ -1779,3 +1782,5 @@ with tab_hist:
 # ============================================================
 st.markdown("---")
 st.caption("Timber AI Assistant V27  · ALVIN  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
+# ============================================================
+# END OF PART 1 — paste Part 2 immediately below this line
