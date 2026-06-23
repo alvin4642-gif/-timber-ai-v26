@@ -526,6 +526,9 @@ species_rate = {
     "Mixed Keruing": mkeruing_rate, "Pure Keruing": pkeruing_rate
 }
 st.divider()
+
+# ============================================================
+# END OF PART 1 — paste Part 2 immediately below this line
 # ============================================================
 # ============================================================
 # Timber AI Assistant V27 — PART 2 of 3
@@ -1782,5 +1785,3 @@ with tab_hist:
 # ============================================================
 st.markdown("---")
 st.caption("Timber AI Assistant V27  · ALVIN  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
-# ============================================================
-# END OF PART 1 — paste Part 2 immediately below this line
