@@ -1173,353 +1173,38 @@ with tab_odd:
         st.session_state.cust_mobile = odd_cust_mobile
     st.divider()
 
-    st.markdown("**Species, Rate & Quantity**")
-    os1, os2, os3 = st.columns([2, 2, 1])
-    with os1: st.session_state.odd_sp  = st.selectbox("Species", SPECIES, index=SPECIES.index(st.session_state.odd_sp), key="odd_sp_sel")
-    with os2:
-        odd_rate = st.number_input("Rate (S$/ton) — adjust if needed", min_value=0,
-            value=species_rate[st.session_state.odd_sp], step=50, key="odd_rate")
-    with os3: st.session_state.odd_qty = st.number_input("Qty (pcs)", min_value=1, value=st.session_state.odd_qty, step=1, key="odd_qty_inp")
-
-    # ── Quick Fill parser ─────────────────────────────────────
-    with st.expander("⚡ Quick Fill — paste customer dimensions", expanded=False):
-        st.caption("Accepts: 200×400×1600 · T200 W400 L1600 · 200T x 400W x 1600mmL · 200 400 1600 (any order/combo)")
-        qf_col1, qf_col2 = st.columns([4, 1])
-        with qf_col1:
-            st.text_input("Paste dimensions",
-                placeholder="e.g.  200×400×1600  or  T200 W400 L1600  or  200T x 400 x 1600mmL",
-                label_visibility="collapsed", key="odd_quickfill_inp")
-        with qf_col2:
-            qf_btn = st.button("Auto-fill ↓", use_container_width=True, key="odd_qf_btn")
-
-        # Must read from session_state key — value= is ignored when key= is set in Streamlit
-        _qf_val = st.session_state.get("odd_quickfill_inp", "").strip()
-        if qf_btn and _qf_val:
-            parsed = parse_dimension_string(_qf_val)
-            if parsed:
-                st.session_state["odd_cthk"] = float(parsed["t"]) if parsed.get("t") is not None else st.session_state.odd_cthk
-                st.session_state["odd_cwid"] = float(parsed["w"]) if parsed.get("w") is not None else st.session_state.odd_cwid
-                if parsed.get("l") is not None:
-                    st.session_state["odd_clen"] = round(float(parsed["l"]) / 1000, 3)
-                    st.session_state["odd_clu"]  = "m"
-                st.session_state["odd_ctu"] = "mm"
-                st.session_state["odd_cwu"] = "mm"
-                st.session_state["qf_fill_key"] += 1
-                st.rerun()
-            else:
-                st.error("⚠️ Could not parse — try: 200×400×1600 or T200 W400 L1600")
-
-    # ── Customer Requested Size (free type) ──────────────────
-    st.markdown("**① Customer Requested Size** — type exactly what customer asked for")
-    cc1, cc2, cc3, cc4, cc5, cc6 = st.columns(6)
-    _fk = st.session_state.qf_fill_key
-    with cc1: st.session_state.odd_cthk = st.number_input("Thickness", min_value=None, value=st.session_state.odd_cthk, placeholder="e.g. 80",  step=0.5, format="%.1f", key=f"odd_cthk_inp_{_fk}")
-    with cc2: st.session_state.odd_ctu  = st.selectbox("Unit",  ["mm","inch"], index=["mm","inch"].index(st.session_state.odd_ctu), key=f"odd_ctu_sel_{_fk}")
-    with cc3: st.session_state.odd_cwid = st.number_input("Width",     min_value=None, value=st.session_state.odd_cwid, placeholder="e.g. 125", step=0.5, format="%.1f", key=f"odd_cwid_inp_{_fk}")
-    with cc4: st.session_state.odd_cwu  = st.selectbox("Unit ", ["mm","inch"], index=["mm","inch"].index(st.session_state.odd_cwu), key=f"odd_cwu_sel_{_fk}")
-    with cc5: st.session_state.odd_clen = st.number_input("Length",    min_value=None, value=st.session_state.odd_clen, placeholder="e.g. 2.4", step=0.1, format="%.1f", key=f"odd_clen_inp_{_fk}")
-    with cc6: st.session_state.odd_clu  = st.selectbox("Unit  ", ["m","ft"], index=["m","ft"].index(st.session_state.odd_clu), key=f"odd_clu_sel_{_fk}")
-
-    # ── Suggest nearest quote size ────────────────────────────
-    cthk_val = st.session_state.odd_cthk
-    cwid_val  = st.session_state.odd_cwid
-
-    if cthk_val and cwid_val:
-        ctu = st.session_state.odd_ctu; cwu = st.session_state.odd_cwu
-        cthk_mm = float(cthk_val) * 25.4 if ctu == "inch" else float(cthk_val)
-        cwid_mm  = float(cwid_val)  * 25.4 if cwu == "inch" else float(cwid_val)
-        # Sort: smaller=thickness, larger=width; suggest expects (width, thickness)
-        cthk_mm, cwid_mm = sorted([cthk_mm, cwid_mm])
-        sug = suggest_quote_size(cwid_mm, cthk_mm)
-
-        # Suggest nearest standard ft from customer length
-        clen_val = st.session_state.odd_clen
-        clu      = st.session_state.odd_clu
-        if clen_val:
-            clen_m   = float(clen_val) if clu == "m" else float(clen_val) * 0.3048
-            sug_ft   = m_to_half_ft(clen_m)
-        else:
-            sug_ft   = 8  # default
-
-        if sug:
-            sug_w, sug_h, sug_lbl, _, _ = sug
-            sug_full = f"{sug_lbl} × {sug_ft}ft ({ft_to_m_display(sug_ft)}m)"
-            st.markdown(
-                f'<div style="background:var(--color-background-info);border:0.5px solid var(--color-border-tertiary);'
-                f'border-radius:var(--border-radius-md);padding:10px 16px;margin:10px 0">'
-                f'<div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:4px">💡 Suggested quote size</div>'
-                f'<div style="font-family:var(--font-mono);font-weight:600;font-size:15px;color:var(--color-text-primary)">{sug_full}</div>'
-                f'<div style="font-size:11px;color:var(--color-text-secondary);margin-top:3px">'
-                f'Planed {sug_w}×{sug_h}mm ≥ customer {int(cthk_mm)}×{int(cwid_mm)}mm &nbsp;·&nbsp; {sug_ft}ft nearest to customer {clen_val}{clu if clen_val else ""}'
-                f'</div></div>',
-                unsafe_allow_html=True
-            )
-            if st.button(f"✅ Accept — {sug_full}", key="odd_accept_suggest"):
-                st.session_state.odd_qsize_label = sug_lbl
-                st.session_state.odd_qft = sug_ft
-                st.session_state.odd_accepted = True
-                # Store accepted values for direct use in Add
-                st.session_state.odd_acc_w_mm  = float(sug_w)
-                st.session_state.odd_acc_h_mm  = float(sug_h)
-                st.session_state.odd_acc_ft    = sug_ft
-                st.session_state.odd_acc_lbl   = sug_lbl
-                st.session_state.odd_acc_full  = sug_full
-                # If sug_ft is a half-ft value, also populate free type fields
-                if sug_ft != int(sug_ft):
-                    st.session_state.odd_qmode = "free"
-                    st.session_state.odd_qthk_free = float(sug_h)
-                    st.session_state.odd_qwid_free = float(sug_w)
-                    st.session_state.odd_qlen_free = sug_ft
-                    st.session_state.odd_qlu_free  = "ft"
-                else:
-                    st.session_state.odd_qmode = "dropdown"
-                st.rerun()
-
-    # ── Accepted state — qty + direct Add ────────────────────
-    if st.session_state.get("odd_accepted") and st.session_state.get("odd_acc_lbl"):
-        acc_w   = st.session_state.odd_acc_w_mm
-        acc_h   = st.session_state.odd_acc_h_mm
-        acc_ft  = st.session_state.odd_acc_ft
-        acc_lbl = st.session_state.odd_acc_lbl
-        acc_full= st.session_state.odd_acc_full
-        nom_w_a = mm_to_nominal_inch(acc_w); nom_h_a = mm_to_nominal_inch(acc_h)
-        _, pcs_a, price_a = calc_from_mm(acc_w, acc_h, acc_ft, odd_rate, nom_w_a, nom_h_a)
-
-        st.markdown(
-            f'<div style="background:var(--color-background-success);border:0.5px solid var(--color-border-success);'
-            f'border-radius:var(--border-radius-md);padding:10px 16px;margin:8px 0">'
-            f'<div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:2px">✅ Accepted quote size</div>'
-            f'<div style="font-family:var(--font-mono);font-weight:600;font-size:15px">{acc_full}</div>'
-            f'<div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">'
-            f'7200/{nom_w_a}/{nom_h_a}/{acc_ft}ft = {pcs_a} pcs/ton → S${price_a}/pc</div></div>',
-            unsafe_allow_html=True
-        )
-        acc_c1, acc_c2, acc_c3 = st.columns([2, 3, 3])
-        with acc_c1:
-            st.session_state.odd_qty = st.number_input(
-                "Qty (pcs)", min_value=1, value=st.session_state.odd_qty,
-                step=1, key="odd_qty_acc")
-        with acc_c2:
-            line_acc = round(price_a * st.session_state.odd_qty, 2)
-            st.markdown(f"<div style='padding-top:28px;font-size:14px'>"
-                        f"<b>S${price_a}/pc × {st.session_state.odd_qty} = S${line_acc:,.2f}</b></div>",
-                        unsafe_allow_html=True)
-        with acc_c3:
-            if st.button("+ Add to Odd Size List", type="primary",
-                         use_container_width=True, key="odd_add_accepted"):
-                cthk_disp = st.session_state.odd_cthk or acc_h
-                cwid_disp = st.session_state.odd_cwid or acc_w
-                clen_disp = st.session_state.odd_clen or ft_to_m_display(acc_ft)
-                clu_disp  = st.session_state.odd_clu
-                cust_size = f"{cthk_disp}mm × {cwid_disp}mm × {clen_disp}{clu_disp}"
-                raw_a, pcs_fl_a, price_a2 = calc_from_mm(acc_w, acc_h, acc_ft, odd_rate, nom_w_a, nom_h_a)
-                line_tot_a = round(price_a2 * st.session_state.odd_qty, 2)
-                st.session_state.odd_items.append({
-                    "species":     st.session_state.odd_sp,
-                    "size":        f"{acc_lbl} × {acc_ft}ft ({ft_to_m_display(acc_ft)}m)",
-                    "quote_size":  f"{acc_lbl} × {acc_ft}ft ({ft_to_m_display(acc_ft)}m)",
-                    "cust_size":   cust_size,
-                    "w_mm": acc_w, "h_mm": acc_h, "ft": acc_ft,
-                    "nom_w": nom_w_a, "nom_h": nom_h_a,
-                    "rate":        odd_rate,
-                    "pcs_per_ton": round(raw_a, 4),
-                    "pcs_floor":   pcs_fl_a,
-                    "price":       price_a2,
-                    "qty":         st.session_state.odd_qty,
-                    "line_total":  line_tot_a,
-                    "small_qty":   st.session_state.odd_qty < SMALL_QTY,
-                })
-                # Reset accepted state and inputs
-                st.session_state.odd_accepted    = False
-                st.session_state.odd_acc_lbl     = None
-                st.session_state.odd_qsize_label = None
-                st.session_state.odd_cthk        = None
-                st.session_state.odd_cwid        = None
-                st.session_state.odd_clen        = None
-                st.session_state.odd_qthk_free   = None
-                st.session_state.odd_qwid_free   = None
-                st.session_state.odd_qlen_free   = None
-                st.session_state.odd_quickfill   = ""
-                st.session_state.qf_fill_key    += 1
-                st.success(f"Added: {cust_size} → {acc_lbl} × {acc_ft}ft @ S${price_a2}/pc")
-                st.rerun()
-        if st.button("✗ Cancel — pick different size", key="odd_cancel_accepted"):
-            st.session_state.odd_accepted = False
-            st.rerun()
-        st.divider()
-
-    st.markdown("**② Your Quote Size** — select from dropdown or type freely (used for pricing)")
-
-    odd_all_labels = odd_size_options_for_dropdown()
-    ft_labels_odd  = [f"{ft} ft  ({FT_TO_M[ft]} m)" for ft in ODD_FT]
-
-    # Toggle: dropdown vs free type — initialised in _defaults
-    st.markdown("""
-    <style>
-    div[data-testid="stRadio"] label { font-size:15px !important; font-weight:500 !important; }
-    div[data-testid="stRadio"] { display:flex; justify-content:center; margin-bottom:8px; }
+    # ── CSS for new layout ────────────────────────────────────
+    st.markdown("""<style>
+    .os-step{display:flex;gap:12px;align-items:flex-start;margin-bottom:12px}
+    .os-num{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;
+            justify-content:center;font-size:12px;font-weight:500;flex-shrink:0;margin-top:16px}
+    .os-active{background:#1D9E75;color:#fff}
+    .os-done{background:#E1F5EE;color:#0F6E56;border:0.5px solid #5DCAA5}
+    .os-idle{background:#f0f0f0;color:#aaa}
+    .os-sug{background:#E1F5EE;border:0.5px solid #5DCAA5;border-radius:8px;padding:10px 14px;flex:1}
+    .os-step3{background:#E1F5EE;border:0.5px solid #5DCAA5;border-radius:8px;padding:10px 14px;flex:1}
+    .os-idle-box{background:#f7f7f7;border-radius:8px;padding:10px 14px;flex:1;color:#aaa;font-size:13px}
     </style>""", unsafe_allow_html=True)
-    mode = st.radio("Quote size input mode", ["📋 Dropdown", "✏️ Free Type"], horizontal=True,
-                    index=0 if st.session_state.odd_qmode == "dropdown" else 1,
-                    key="odd_qmode_radio")
-    st.session_state.odd_qmode = "dropdown" if "Dropdown" in mode else "free"
 
-    # Default index for length dropdown
-    # selectbox keys drive dropdown values directly via session state
-
-    if st.session_state.odd_qmode == "dropdown":
-        qd1, qd2 = st.columns([3, 2])
-
-        _qsize_idx = 0
-        if st.session_state.get("odd_qsize_label") in odd_all_labels:
-            _qsize_idx = odd_all_labels.index(st.session_state.odd_qsize_label)
-
-        _ft_labels_idx = 0
-        _sug_ft_str = f"{st.session_state.odd_qft} ft  ({ft_to_m_display(st.session_state.odd_qft)} m)"
-        if _sug_ft_str in ft_labels_odd:
-            _ft_labels_idx = ft_labels_odd.index(_sug_ft_str)
-
-        with qd1:
-            # No key= — index= fully controls the displayed value
-            selected_qsize = st.selectbox(
-                "Quote Size (thickness × width)",
-                odd_all_labels, index=_qsize_idx
-            )
-            st.session_state.odd_qsize_label = selected_qsize
-
-        with qd2:
-            # No key= — index= fully controls the displayed value
-            selected_qft_label = st.selectbox(
-                "Quote Length", ft_labels_odd, index=_ft_labels_idx
-            )
-            selected_qft = int(selected_qft_label.split(" ")[0])
-            st.session_state.odd_qft = selected_qft
-
-        # Resolve mm dims from dropdown label — odd size ALWAYS uses actual mm
-        qw_mm, qh_mm, _, _ = lookup_size(selected_qsize)
-        q_len_m_use  = FT_TO_M[selected_qft]
-        quote_size_str = f"{selected_qsize} × {selected_qft}ft"
-
-    else:
-        # Free type mode
-        st.caption("Type any custom quote size — not limited to standard list")
-        fc1, fc2, fc3, fc4, fc5, fc6 = st.columns(6)
-        with fc1:
-            st.session_state.odd_qthk_free = st.number_input(
-                "Thickness", min_value=None, value=st.session_state.odd_qthk_free,
-                placeholder="e.g. 130", step=0.5, format="%.1f", key="odd_qthk_free_inp")
-        with fc2:
-            st.caption("mm")
-        with fc3:
-            st.session_state.odd_qwid_free = st.number_input(
-                "Width", min_value=None, value=st.session_state.odd_qwid_free,
-                placeholder="e.g. 180", step=0.5, format="%.1f", key="odd_qwid_free_inp")
-        with fc4:
-            st.caption("mm")
-        with fc5:
-            st.session_state.odd_qlen_free = st.number_input(
-                "Length", min_value=None, value=st.session_state.odd_qlen_free,
-                placeholder="e.g. 3.0", step=0.1, format="%.2f", key="odd_qlen_free_inp")
-        with fc6:
-            st.session_state.odd_qlu_free = st.selectbox(
-                "Unit   ", ["m", "ft"],
-                index=["m", "ft"].index(st.session_state.odd_qlu_free),
-                key="odd_qlu_free_sel")
-
-        qh_mm   = float(st.session_state.odd_qthk_free) if st.session_state.odd_qthk_free else None
-        qw_mm   = float(st.session_state.odd_qwid_free) if st.session_state.odd_qwid_free else None
-        _qlen_raw = float(st.session_state.odd_qlen_free) if st.session_state.odd_qlen_free else None
-        _qlu      = st.session_state.odd_qlu_free
-        q_len_m_use = (_qlen_raw * 0.3048 if _qlu == "ft" else _qlen_raw) if _qlen_raw else None
-        _qlen_display = f"{_qlen_raw}{_qlu}" if _qlen_raw else None
-        selected_qft = None
-        selected_qsize = (
-            f"{st.session_state.odd_qthk_free}mm × {st.session_state.odd_qwid_free}mm"
-            if qh_mm and qw_mm else None
-        )
-        quote_size_str = (
-            f"{st.session_state.odd_qthk_free}mm × {st.session_state.odd_qwid_free}mm × {_qlen_display}"
-            if qh_mm and qw_mm and q_len_m_use else None
-        )
-
-    # ── Validation ───────────────────────────────────────────
-    _cthk_val = st.session_state.odd_cthk; _cwid_val = st.session_state.odd_cwid
-    _clen_val = st.session_state.odd_clen; _clu = st.session_state.odd_clu
-    _ctu = st.session_state.odd_ctu; _cwu = st.session_state.odd_cwu
-    _cthk_mm_v = float(_cthk_val) * 25.4 if (_cthk_val and _ctu == "inch") else (float(_cthk_val) if _cthk_val else None)
-    _cwid_mm_v = float(_cwid_val) * 25.4 if (_cwid_val and _cwu == "inch") else (float(_cwid_val) if _cwid_val else None)
-    _qlu_v = st.session_state.odd_qlu_free if st.session_state.odd_qmode == "free" else None
-    _qlen_raw_v = float(st.session_state.odd_qlen_free) if (st.session_state.odd_qmode == "free" and st.session_state.odd_qlen_free) else None
-
-    _val_errors = validate_odd_inputs(
-        cthk_mm=_cthk_mm_v, cwid_mm=_cwid_mm_v,
-        clen_val=float(_clen_val) if _clen_val else None, clu=_clu,
-        qthk_mm=float(st.session_state.odd_qthk_free) if (st.session_state.odd_qmode == "free" and st.session_state.odd_qthk_free) else None,
-        qwid_mm=float(st.session_state.odd_qwid_free) if (st.session_state.odd_qmode == "free" and st.session_state.odd_qwid_free) else None,
-        qlen_m=_qlen_raw_v, qlu=_qlu_v,
-    )
-    if _val_errors:
-        for _e in _val_errors:
-            st.error(_e)
-
-    # Live price preview
-    if qw_mm and qh_mm and q_len_m_use and not _val_errors:
-        ft_for_calc = m_to_half_ft(q_len_m_use) if selected_qft is None else selected_qft
-        raw_pcs, pcs_fl, price_preview = calc_from_mm(qw_mm, qh_mm, ft_for_calc, odd_rate)
-        line_preview = round(price_preview * st.session_state.odd_qty, 2)
-        nom_w_disp = mm_to_nominal_inch(qw_mm); nom_h_disp = mm_to_nominal_inch(qh_mm)
-        st.caption(
-            f"Preview: {quote_size_str}  →  "
-            f"7200/{nom_w_disp}/{nom_h_disp}/{ft_for_calc}ft = {round(raw_pcs, 2)} pcs/ton (floor {pcs_fl})  →  "
-            f"**S${price_preview}/pc × {st.session_state.odd_qty} = S${line_preview:,.2f}**"
-        )
-
-    ob1, ob2 = st.columns(2)
-    with ob1:
-        cthk = st.session_state.odd_cthk; cwid = st.session_state.odd_cwid; clen = st.session_state.odd_clen
-        if st.button("+ Add to Odd Size List", type="primary", use_container_width=True):
-            if _val_errors:
-                st.error("Fix the errors above before adding.")
-            elif cthk and cwid and clen and qw_mm and qh_mm and q_len_m_use:
-                ctu = st.session_state.odd_ctu; cwu = st.session_state.odd_cwu; clu = st.session_state.odd_clu
-                cust_size = (
-                    f'{cthk}" x {cwid}" x {clen}{"ft" if clu=="ft" else "m"}'
-                    if ctu == "inch"
-                    else f"{cthk}mm x {cwid}mm x {clen}{clu}"
-                )
-                ft_for_add  = m_to_half_ft(q_len_m_use) if selected_qft is None else selected_qft
-                raw2, pcs_fl2, price2 = calc_from_mm(qw_mm, qh_mm, ft_for_add, odd_rate)
-                line_tot2   = round(price2 * st.session_state.odd_qty, 2)
-                st.session_state.odd_items.append({
-                    "species":     st.session_state.odd_sp,
-                    "cust_size":   cust_size,
-                    "quote_size":  quote_size_str,
-                    "price":       price2,
-                    "qty":         st.session_state.odd_qty,
-                    "line_total":  line_tot2,
-                    "rate":        odd_rate,
-                    "pcs_per_ton": round(raw2, 4),
-                    "pcs_floor":   pcs_fl2,
-                    "small_qty":   st.session_state.odd_qty < SMALL_QTY
-                })
-                st.session_state.odd_ready = False
-                st.session_state.odd_qsize_label = None
-                st.session_state.odd_qthk_free = None
-                st.session_state.odd_qwid_free = None
-                st.session_state.odd_qlen_free = None
-                st.success(f"Added: {cust_size} → priced as {quote_size_str} @ S${price2}/pc")
-                st.rerun()
-            else:
-                st.error("Please fill in all customer size fields and quote size before adding.")
-    with ob2:
-        if st.button("Clear Inputs", use_container_width=True):
-            # Reset all input-related keys to their _defaults values
+    # ── Row 0: Species / Rate / Reset ─────────────────────────
+    _rrk = st.session_state.rate_reset_key
+    _fk  = st.session_state.qf_fill_key
+    r0c1, r0c2, r0c3, r0c4 = st.columns([2, 2, 1, 1])
+    with r0c1: st.session_state.odd_sp = st.selectbox("Species", SPECIES, index=SPECIES.index(st.session_state.odd_sp), key="odd_sp_sel")
+    with r0c2: odd_rate = st.number_input("Rate (S$/ton)", min_value=0, value=species_rate[st.session_state.odd_sp], step=50, key=f"odd_rate_{_rrk}")
+    with r0c3:
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        if st.button("↩ Reset rates", use_container_width=True, key="odd_reset_rates"):
+            st.session_state.rate_reset_key += 1
+            st.rerun()
+    with r0c4:
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        if st.button("Clear inputs", use_container_width=True, key="odd_clear_inputs"):
             _input_keys = {
                 "odd_cthk": None, "odd_cwid": None, "odd_clen": None,
-                "odd_ctu": "mm",  "odd_cwu": "mm",  "odd_clu": "m",
+                "odd_ctu": "mm", "odd_cwu": "mm", "odd_clu": "m",
                 "odd_qsize_label": None, "odd_suggest": None,
-                "odd_qft": 8, "odd_qty": 1,
-                "odd_qmode": "dropdown",
+                "odd_qft": 8, "odd_qty": 1, "odd_qmode": "dropdown",
                 "odd_qthk_free": None, "odd_qwid_free": None,
                 "odd_qlen_free": None, "odd_qlu_free": "m",
                 "odd_accepted": False,
@@ -1529,8 +1214,226 @@ with tab_odd:
             }
             for k, v in _input_keys.items():
                 st.session_state[k] = v
-            st.session_state.qf_fill_key += 1
+            st.session_state.qf_fill_key   += 1
+            st.session_state.rate_reset_key += 1
             st.rerun()
+
+    st.divider()
+
+    # ── Derive suggest values ─────────────────────────────────
+    _has_dims = st.session_state.odd_cthk and st.session_state.odd_cwid
+    if _has_dims:
+        _ctu = st.session_state.odd_ctu; _cwu = st.session_state.odd_cwu
+        _cthk_mm = float(st.session_state.odd_cthk) * 25.4 if _ctu == "inch" else float(st.session_state.odd_cthk)
+        _cwid_mm = float(st.session_state.odd_cwid)  * 25.4 if _cwu == "inch" else float(st.session_state.odd_cwid)
+        _cthk_mm, _cwid_mm = sorted([_cthk_mm, _cwid_mm])
+        _sug = suggest_quote_size(_cwid_mm, _cthk_mm)
+        _clen_val = st.session_state.odd_clen; _clu = st.session_state.odd_clu
+        if _clen_val:
+            _clen_m = float(_clen_val) if _clu == "m" else float(_clen_val) * 0.3048
+            _sug_ft = m_to_half_ft(_clen_m)
+        else:
+            _sug_ft = 8
+        if _sug:
+            _sug_w, _sug_h, _sug_lbl, _, _ = _sug
+            _sug_full = f"{_sug_lbl} × {_sug_ft}ft ({ft_to_m_display(_sug_ft)}m)"
+            _nom_w_s = mm_to_nominal_inch(_sug_w); _nom_h_s = mm_to_nominal_inch(_sug_h)
+            _, _sug_pcs, _sug_price = calc_from_mm(_sug_w, _sug_h, _sug_ft, odd_rate, _nom_w_s, _nom_h_s)
+        else:
+            _sug_lbl = _sug_full = None; _sug_pcs = _sug_price = 0
+    else:
+        _sug = None; _sug_lbl = _sug_full = None; _sug_pcs = _sug_price = 0
+        _cthk_mm = _cwid_mm = 0; _sug_w = _sug_h = 0; _sug_ft = 8
+
+    _accepted = st.session_state.get("odd_accepted") and st.session_state.get("odd_acc_lbl")
+
+    # ── Step 1: Customer dimensions ───────────────────────────
+    _step1_done = bool(_has_dims and st.session_state.odd_clen)
+    s1_num = "✓" if _step1_done else "1"
+    s1_cls = "os-done" if _step1_done else "os-active"
+
+    s1a, s1b = st.columns([0.08, 0.92])
+    with s1a:
+        st.markdown(f'<div class="os-num {s1_cls}" style="margin-top:20px">{s1_num}</div>', unsafe_allow_html=True)
+    with s1b:
+        st.markdown("<div style='font-size:11px;color:var(--color-text-secondary);margin-bottom:4px'>Paste or type customer dimensions</div>", unsafe_allow_html=True)
+        p1, p2, p3, p4, p5, p6, p7 = st.columns([2.5, 0.7, 1, 1, 1, 0.6, 0.6])
+        with p1: st.text_input("Paste", placeholder="e.g. 200×400×1600 or T200 W400 L1600", label_visibility="collapsed", key="odd_quickfill_inp")
+        with p2:
+            st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+            qf_btn = st.button("Fill ↓", use_container_width=True, key="odd_qf_btn")
+        with p3: st.session_state.odd_cthk = st.number_input("Thk (mm)", min_value=None, value=st.session_state.odd_cthk, placeholder="Thk", step=0.5, format="%.1f", key=f"odd_cthk_inp_{_fk}")
+        with p4: st.session_state.odd_cwid = st.number_input("Wid (mm)", min_value=None, value=st.session_state.odd_cwid, placeholder="Wid", step=0.5, format="%.1f", key=f"odd_cwid_inp_{_fk}")
+        with p5: st.session_state.odd_clen = st.number_input("Len",      min_value=None, value=st.session_state.odd_clen, placeholder="Len", step=0.1, format="%.2f", key=f"odd_clen_inp_{_fk}")
+        with p6: st.session_state.odd_clu  = st.selectbox("LenU", ["m","ft"], index=["m","ft"].index(st.session_state.odd_clu), key=f"odd_clu_sel_{_fk}", label_visibility="collapsed")
+        with p7: st.session_state.odd_ctu  = st.selectbox("TU",   ["mm","inch"], index=["mm","inch"].index(st.session_state.odd_ctu), key=f"odd_ctu_sel_{_fk}", label_visibility="collapsed")
+
+    # Quick Fill parse
+    _qf_val = st.session_state.get("odd_quickfill_inp", "").strip()
+    if qf_btn and _qf_val:
+        parsed = parse_dimension_string(_qf_val)
+        if parsed:
+            if parsed.get("t") is not None: st.session_state["odd_cthk"] = float(parsed["t"])
+            if parsed.get("w") is not None: st.session_state["odd_cwid"] = float(parsed["w"])
+            if parsed.get("l") is not None:
+                st.session_state["odd_clen"] = round(float(parsed["l"]) / 1000, 3)
+                st.session_state["odd_clu"]  = "m"
+            st.session_state["odd_ctu"] = "mm"
+            st.session_state["qf_fill_key"] += 1
+            st.rerun()
+        else:
+            st.error("⚠️ Could not parse — try: 200×400×1600 or T200 W400 L1600")
+
+    # Validation
+    _val_errors = validate_odd_inputs(
+        cthk_mm=_cthk_mm if _has_dims else None,
+        cwid_mm=_cwid_mm if _has_dims else None,
+        clen_val=float(st.session_state.odd_clen) if st.session_state.odd_clen else None,
+        clu=st.session_state.odd_clu,
+    )
+    if _val_errors:
+        for _e in _val_errors: st.error(_e)
+
+    st.divider()
+
+    # ── Step 2: Suggest ───────────────────────────────────────
+    s2a, s2b = st.columns([0.08, 0.92])
+    with s2a:
+        _s2_cls = "os-done" if _accepted else ("os-active" if _step1_done and _sug and not _val_errors else "os-idle")
+        _s2_num = "✓" if _accepted else "2"
+        st.markdown(f'<div class="os-num {_s2_cls}" style="margin-top:8px">{_s2_num}</div>', unsafe_allow_html=True)
+    with s2b:
+        if _accepted:
+            acc_full = st.session_state.odd_acc_full
+            st.markdown(
+                f'<div class="os-sug" style="margin-top:4px">'
+                f'<span style="font-size:14px;font-weight:500;color:#085041">{acc_full}</span>'
+                f'&nbsp;&nbsp;<span style="font-size:12px;color:#0F6E56">{st.session_state.odd_acc_pcs if "odd_acc_pcs" in st.session_state else ""} pcs · S${st.session_state.odd_acc_price if "odd_acc_price" in st.session_state else ""}/pc</span>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+        elif _step1_done and _sug and not _val_errors:
+            st.markdown(
+                f'<div class="os-sug" style="margin-top:4px;display:flex;justify-content:space-between;align-items:center">'
+                f'<div><div style="font-size:14px;font-weight:500;color:#085041">{_sug_full}</div>'
+                f'<div style="font-size:11px;color:#0F6E56;margin-top:2px">'
+                f'7200/{mm_to_nominal_inch(_sug_w)}/{mm_to_nominal_inch(_sug_h)}/{_sug_ft}ft = {_sug_pcs} pcs/ton → S${_sug_price}/pc</div></div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+            sc1, sc2 = st.columns([1, 4])
+            with sc1:
+                if st.button("✓ Accept", key="odd_accept_suggest", use_container_width=True):
+                    st.session_state.odd_accepted    = True
+                    st.session_state.odd_acc_w_mm    = float(_sug_w)
+                    st.session_state.odd_acc_h_mm    = float(_sug_h)
+                    st.session_state.odd_acc_ft      = _sug_ft
+                    st.session_state.odd_acc_lbl     = _sug_lbl
+                    st.session_state.odd_acc_full    = _sug_full
+                    st.session_state.odd_acc_pcs     = _sug_pcs
+                    st.session_state.odd_acc_price   = _sug_price
+                    st.session_state.odd_qsize_label = _sug_lbl
+                    st.session_state.odd_qft         = _sug_ft
+                    st.rerun()
+            with sc2:
+                if st.button("override — enter size manually", key="odd_override"):
+                    st.session_state.odd_accepted = False
+                    st.session_state.odd_acc_lbl  = None
+                    st.session_state.odd_qmode    = "free"
+                    st.rerun()
+        else:
+            st.markdown('<div class="os-idle-box" style="margin-top:4px">Suggested quote size appears here after step 1</div>', unsafe_allow_html=True)
+
+    # Override — free type
+    if st.session_state.odd_qmode == "free" and not _accepted:
+        st.caption("Enter your quote size manually:")
+        fc1, fc2, fc3, fc4 = st.columns([1, 1, 1, 1])
+        with fc1: st.session_state.odd_qthk_free = st.number_input("Thk (mm)", min_value=None, value=st.session_state.odd_qthk_free, placeholder="e.g. 130", step=0.5, format="%.1f", key="odd_qthk_free_inp")
+        with fc2: st.session_state.odd_qwid_free = st.number_input("Wid (mm)", min_value=None, value=st.session_state.odd_qwid_free, placeholder="e.g. 180", step=0.5, format="%.1f", key="odd_qwid_free_inp")
+        with fc3: st.session_state.odd_qlen_free = st.number_input("Len", min_value=None, value=st.session_state.odd_qlen_free, placeholder="e.g. 3.0", step=0.1, format="%.2f", key="odd_qlen_free_inp")
+        with fc4: st.session_state.odd_qlu_free  = st.selectbox("Unit", ["m","ft"], index=["m","ft"].index(st.session_state.odd_qlu_free), key="odd_qlu_free_sel")
+
+        qh_mm = float(st.session_state.odd_qthk_free) if st.session_state.odd_qthk_free else None
+        qw_mm = float(st.session_state.odd_qwid_free) if st.session_state.odd_qwid_free else None
+        _qlen_raw = float(st.session_state.odd_qlen_free) if st.session_state.odd_qlen_free else None
+        _qlu = st.session_state.odd_qlu_free
+        q_len_m_use = (_qlen_raw * 0.3048 if _qlu == "ft" else _qlen_raw) if _qlen_raw else None
+        _qlen_display = f"{_qlen_raw}{_qlu}" if _qlen_raw else None
+        quote_size_str = f"{st.session_state.odd_qthk_free}mm × {st.session_state.odd_qwid_free}mm × {_qlen_display}" if qh_mm and qw_mm and q_len_m_use else None
+
+        if qw_mm and qh_mm and q_len_m_use:
+            _ft_ov = m_to_half_ft(q_len_m_use) if _qlu == "m" else _qlen_raw
+            _, _pcs_ov, _price_ov = calc_from_mm(qw_mm, qh_mm, _ft_ov, odd_rate)
+            _line_ov = round(_price_ov * st.session_state.odd_qty, 2)
+            st.caption(f"Preview: 7200/{mm_to_nominal_inch(qw_mm)}/{mm_to_nominal_inch(qh_mm)}/{_ft_ov}ft = {_pcs_ov} pcs → S${_price_ov}/pc")
+            if st.button("✓ Use this size", key="odd_use_override"):
+                _nom_ov_w = mm_to_nominal_inch(qw_mm); _nom_ov_h = mm_to_nominal_inch(qh_mm)
+                raw_ov, pcs_ov, price_ov = calc_from_mm(qw_mm, qh_mm, _ft_ov, odd_rate, _nom_ov_w, _nom_ov_h)
+                st.session_state.odd_accepted    = True
+                st.session_state.odd_acc_w_mm    = qw_mm
+                st.session_state.odd_acc_h_mm    = qh_mm
+                st.session_state.odd_acc_ft      = _ft_ov
+                st.session_state.odd_acc_lbl     = quote_size_str
+                st.session_state.odd_acc_full    = f"{quote_size_str} × {_ft_ov}ft ({ft_to_m_display(_ft_ov)}m)"
+                st.session_state.odd_acc_pcs     = pcs_ov
+                st.session_state.odd_acc_price   = price_ov
+                st.session_state.odd_qmode       = "dropdown"
+                st.rerun()
+
+    st.divider()
+
+    # ── Step 3: Qty + Add ─────────────────────────────────────
+    s3a, s3b = st.columns([0.08, 0.92])
+    with s3a:
+        _s3_cls = "os-active" if _accepted else "os-idle"
+        st.markdown(f'<div class="os-num {_s3_cls}" style="margin-top:8px">3</div>', unsafe_allow_html=True)
+    with s3b:
+        if _accepted:
+            acc_w   = st.session_state.odd_acc_w_mm
+            acc_h   = st.session_state.odd_acc_h_mm
+            acc_ft  = st.session_state.odd_acc_ft
+            acc_lbl = st.session_state.odd_acc_lbl
+            acc_full= st.session_state.odd_acc_full
+            nom_w_a = mm_to_nominal_inch(acc_w); nom_h_a = mm_to_nominal_inch(acc_h)
+            raw_a, pcs_fl_a, price_a = calc_from_mm(acc_w, acc_h, acc_ft, odd_rate, nom_w_a, nom_h_a)
+            st.session_state.odd_qty = st.number_input("Qty (pcs)", min_value=1, value=st.session_state.odd_qty, step=1, key="odd_qty_acc")
+            line_acc = round(price_a * st.session_state.odd_qty, 2)
+            st.markdown(f'<div style="font-size:13px;color:#0F6E56;margin:4px 0">× S${price_a}/pc = <b style="color:#085041">S${line_acc:,.2f}</b></div>', unsafe_allow_html=True)
+            if st.button("+ Add to Odd Size List", key="odd_add_accepted", type="primary", use_container_width=True):
+                _cthk_d = st.session_state.odd_cthk or acc_h
+                _cwid_d = st.session_state.odd_cwid or acc_w
+                _clen_d = st.session_state.odd_clen or ft_to_m_display(acc_ft)
+                _clu_d  = st.session_state.odd_clu
+                cust_size = f"{_cthk_d}mm × {_cwid_d}mm × {_clen_d}{_clu_d}"
+                raw_a2, pcs_fl_a2, price_a2 = calc_from_mm(acc_w, acc_h, acc_ft, odd_rate, nom_w_a, nom_h_a)
+                st.session_state.odd_items.append({
+                    "species":     st.session_state.odd_sp,
+                    "size":        acc_full,
+                    "quote_size":  acc_full,
+                    "cust_size":   cust_size,
+                    "w_mm": acc_w, "h_mm": acc_h, "ft": acc_ft,
+                    "nom_w": nom_w_a, "nom_h": nom_h_a,
+                    "rate":        odd_rate,
+                    "pcs_per_ton": round(raw_a2, 4),
+                    "pcs_floor":   pcs_fl_a2,
+                    "price":       price_a2,
+                    "qty":         st.session_state.odd_qty,
+                    "line_total":  round(price_a2 * st.session_state.odd_qty, 2),
+                    "small_qty":   st.session_state.odd_qty < SMALL_QTY,
+                })
+                # Reset for next entry
+                for k, v in {"odd_cthk":None,"odd_cwid":None,"odd_clen":None,
+                              "odd_ctu":"mm","odd_cwu":"mm","odd_clu":"m",
+                              "odd_accepted":False,"odd_acc_lbl":None,"odd_acc_full":None,
+                              "odd_acc_w_mm":None,"odd_acc_h_mm":None,"odd_acc_ft":None,
+                              "odd_quickfill":"","odd_qmode":"dropdown",
+                              "odd_qthk_free":None,"odd_qwid_free":None,"odd_qlen_free":None}.items():
+                    st.session_state[k] = v
+                st.session_state.qf_fill_key += 1
+                st.session_state.odd_ready = False
+                st.rerun()
+        else:
+            st.markdown('<div class="os-idle-box" style="margin-top:4px">Set qty &amp; add — available after accepting step 2</div>', unsafe_allow_html=True)
 
     if st.session_state.odd_items:
         st.divider()
