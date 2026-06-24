@@ -345,6 +345,17 @@ def m_to_half_ft(l_m):
     ft = l_m * 3.28084
     return math.ceil(ft * 2) / 2
 
+def snap_to_trade_length(l_m):
+    """Ceil raw metre value to nearest trade-standard metre (from FT_TO_M).
+    Used after Quick Fill so Len field shows clean trade length.
+    e.g. 1050mm → 1.05m → 1.2m (4ft), 1600mm → 1.6m → 1.8m (6ft)
+    """
+    ft = l_m * 3.28084
+    for f in sorted(FT_TO_M.keys()):
+        if f >= ft - 0.01:
+            return FT_TO_M[f]
+    return FT_TO_M[22]
+
 # QB sizes only (exclude 5", 7", 11" odd groups)
 QB_SIZES  = STANDARD_SIZES   # all 105 sizes in QB dropdown
 ODD_SIZES = STANDARD_SIZES   # all 105 sizes in Odd Size suggest
@@ -1313,7 +1324,7 @@ with tab_odd:
         st.markdown(f'<div class="os-num {s1_cls}" style="margin-top:20px">{s1_num}</div>', unsafe_allow_html=True)
     with s1b:
         st.markdown("<div style='font-size:11px;color:var(--color-text-secondary);margin-bottom:4px'>Paste or type customer dimensions</div>", unsafe_allow_html=True)
-        p1, p2, p3, p4, p5, p6, p7 = st.columns([2.5, 0.7, 0.6, 1, 1, 1, 0.6])
+        p1, p2, p3, p4, p5, p6, p7 = st.columns([3.5, 0.7, 0.6, 1, 1, 1, 0.6])
         with p1: st.text_input("Paste", placeholder="e.g. 200×400×1600 or T200 W400 L1600", label_visibility="collapsed", key="odd_quickfill_inp")
         with p2:
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
@@ -1332,7 +1343,8 @@ with tab_odd:
             if parsed.get("t") is not None: st.session_state["odd_cthk"] = float(parsed["t"])
             if parsed.get("w") is not None: st.session_state["odd_cwid"] = float(parsed["w"])
             if parsed.get("l") is not None:
-                st.session_state["odd_clen"] = round(float(parsed["l"]) / 1000, 3)
+                _raw_m = round(float(parsed["l"]) / 1000, 3)
+                st.session_state["odd_clen"] = snap_to_trade_length(_raw_m)
                 st.session_state["odd_clu"]  = "m"
             st.session_state["odd_ctu"] = "mm"
             st.session_state["qf_fill_key"] += 1
