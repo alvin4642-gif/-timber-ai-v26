@@ -1,5 +1,5 @@
 # ============================================================
-# Timber AI Assistant V27 — PART 1 of 3
+# Timber AI Assistant V30 — PART 1 of 3
 # CONFIG & DATA
 # Paste this FIRST at the top of your app.py in GitHub
 # ============================================================
@@ -11,7 +11,7 @@ import requests
 import re
 from datetime import datetime
 
-st.set_page_config(layout="wide", page_title="Timber AI Assistant V28", page_icon="🪵")
+st.set_page_config(layout="wide", page_title="Timber AI Assistant V30", page_icon="🪵")
 
 # ============================================================
 # CSS
@@ -494,9 +494,9 @@ def reset_all():
 st.markdown("""
 <div class="app-header">
   <div class="app-header-title">🪵 Timber AI Assistant
-    <span style="background:#1D9E75;color:white;font-size:13px;padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle">V28</span>
+    <span style="background:#1D9E75;color:white;font-size:13px;padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle">V30</span>
   </div>
-  <div class="app-header-sub">Professional Quoting System &nbsp;·&nbsp; Prices in SGD &nbsp;·&nbsp; PLONY Industries</div>
+  <div class="app-header-sub">Professional Quoting System &nbsp;·&nbsp; Prices in SGD</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -531,7 +531,7 @@ st.divider()
 # END OF PART 1 — paste Part 2 immediately below this line
 # ============================================================
 # ============================================================
-# Timber AI Assistant V27 — PART 2 of 3
+# Timber AI Assistant V30 — PART 2 of 3
 # FUNCTIONS: Gist helpers, calc engine, parser, UI utilities
 # Paste this SECOND, immediately after Part 1
 # ============================================================
@@ -633,12 +633,31 @@ def calc_from_mm(w_mm, h_mm, ft, rate, nom_w=None, nom_h=None):
 def is_keruing(species):
     return species in ["Mixed Keruing", "Pure Keruing"]
 
-def build_reply(lines, total, is_timber=True, extra_note=""):
+def build_reply(lines, total, is_timber=True, is_plywood=False, extra_note=""):
+    """
+    Build customer reply text.
+    - Total line removed (per-line subtotals are sufficient)
+    - Tolerances split by product type:
+        Timber:  Thickness/Width +-1~2mm  |  Length +-25~50mm
+        Plywood: Thickness +-0.8~1.2mm    |  Length/Width +-2~3mm
+        Mixed:   both sections labelled
+    """
     out = list(lines)
-    out.append(f"\nTotal : S${total:,.2f}")
     out.append("\nTolerances:")
-    out.append("- Thickness/Width: +-1~2mm")
-    if is_timber:
+    if is_timber and is_plywood:
+        # Mixed quote
+        out.append("Timber:")
+        out.append("- Thickness/Width: +-1~2mm")
+        out.append("- Length: +-25~50mm")
+        out.append("Plywood:")
+        out.append("- Thickness: +-0.8~1.2mm")
+        out.append("- Length/Width: +-2~3mm")
+    elif is_plywood:
+        out.append("- Thickness: +-0.8~1.2mm")
+        out.append("- Length/Width: +-2~3mm")
+    else:
+        # Timber only (default)
+        out.append("- Thickness/Width: +-1~2mm")
         out.append("- Length: +-25~50mm")
     if extra_note:
         out.append(extra_note)
@@ -945,7 +964,7 @@ def parsed_to_odd_item(p, species_rate_map):
 # END OF PART 2 — paste Part 3 immediately below this line
 # ============================================================
 # ============================================================
-# Timber AI Assistant V27 — PART 3 of 3
+# Timber AI Assistant V30 — PART 3 of 3
 # UI TABS: Quote Builder, Odd Size, Plywood, Suppliers, History
 # Paste this THIRD, immediately after Part 2
 # AI Parser and Plywood Cut-to-Size removed — built as separate apps
@@ -1114,7 +1133,7 @@ with tab_quote:
                     f"{item['species']} timber\n{item['size']} @ S${locked_price}/pcs x {item['qty']} = S${gt:,.2f}"
                 )
             grand_total = round(grand_total, 2); cost_total = round(cost_total, 2)
-            reply_text = build_reply(customer_reply, grand_total, is_timber=True)
+            reply_text = build_reply(customer_reply, grand_total, is_timber=True, is_plywood=False)
             st.session_state.q_ready = True; st.session_state.q_reply  = reply_text
             st.session_state.q_total = grand_total; st.session_state.q_cost   = cost_total
             st.session_state.q_nitem = len(customer_reply); st.session_state.q_log = log_items
@@ -1491,7 +1510,7 @@ with tab_odd:
                     f"@ S${item['price']}/pcs x {item['qty']} = S${item['line_total']:,.2f}"
                 )
             odd_total=round(odd_total,2); odd_cost=round(odd_cost,2)
-            reply_text=build_reply(odd_reply,odd_total,is_timber=True)
+            reply_text=build_reply(odd_reply,odd_total,is_timber=True,is_plywood=False)
             st.session_state.odd_ready=True; st.session_state.odd_reply=reply_text
             st.session_state.odd_total=odd_total; st.session_state.odd_cost=odd_cost
             st.session_state.odd_nitem=len(odd_reply); st.session_state.odd_log=odd_log
@@ -1647,7 +1666,7 @@ with tab_ply:
 
                 has_fr=any("Fire Retardant" in x["grade"] for x in st.session_state.ply_items)
                 fr_note="\n  * Plywood may/will be wet & may/will have some powder when dried." if has_fr else ""
-                reply_txt=build_reply(ply_reply,ply_grand,is_timber=False,extra_note=fr_note)
+                reply_txt=build_reply(ply_reply,ply_grand,is_timber=False,is_plywood=True,extra_note=fr_note)
                 st.session_state.ply_ready=True; st.session_state.ply_reply=reply_txt
                 st.session_state.ply_total=ply_grand; st.session_state.ply_cost=ply_cost_total
                 st.session_state.ply_nitem=len(ply_reply); st.session_state.ply_log=ply_log
@@ -1688,7 +1707,7 @@ with tab_sup:
     st.markdown("""<div class="sup-header">
       <div class="sup-avatar">YC</div>
       <div><div class="sup-name">Ying Chuan Timber Co Pte Ltd</div>
-      <div class="sup-sub">Supplier 1 &nbsp;·&nbsp; Plony Industries &nbsp;·&nbsp; Updated May 2026</div></div>
+      <div class="sup-sub">Supplier 1 &nbsp;·&nbsp; Updated May 2026</div></div>
     </div>""", unsafe_allow_html=True)
 
     sup1, sup2 = st.tabs(["📊 Cost vs Selling Price", "📈 Margin Summary"])
@@ -1784,4 +1803,4 @@ with tab_hist:
 # FOOTER
 # ============================================================
 st.markdown("---")
-st.caption("Timber AI Assistant V27  · ALVIN  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
+st.caption("Timber AI Assistant V30  · ALVIN  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
