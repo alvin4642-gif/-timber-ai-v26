@@ -639,7 +639,7 @@ def build_reply(lines, total, is_timber=True, is_plywood=False, extra_note=""):
     - Total line removed (per-line subtotals are sufficient)
     - Tolerances split by product type:
         Timber:  Thickness/Width +-1~2mm  |  Length +-25~50mm
-        Plywood: Thickness +-0.8~1.2mm    |  Length/Width +-2~3mm
+        Plywood: Thickness +-0.8~1.2mm
         Mixed:   both sections labelled
     """
     out = list(lines)
