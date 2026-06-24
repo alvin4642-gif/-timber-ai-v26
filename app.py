@@ -51,6 +51,8 @@ st.markdown("""
 .sup-avatar { width:44px; height:44px; border-radius:50%; background:#E1F5EE; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:600; color:#0F6E56; flex-shrink:0; }
 .sup-name { font-size:18px; font-weight:600; color:inherit; }
 .sup-sub { font-size:12px; color:#888; margin-top:2px; }
+
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -1201,14 +1203,6 @@ with tab_odd:
     .os-sug{background:#E1F5EE;border:0.5px solid #5DCAA5;border-radius:8px;padding:10px 14px;flex:1}
     .os-step3{background:#E1F5EE;border:0.5px solid #5DCAA5;border-radius:8px;padding:10px 14px;flex:1}
     .os-idle-box{background:#f7f7f7;border-radius:8px;padding:10px 14px;flex:1;color:#aaa;font-size:13px}
-    /* Amber Clear Inputs */
-    .btn-amber button { background:#FAEEDA!important; border:1px solid #EF9F27!important; color:#633806!important; font-weight:500!important; }
-    .btn-amber button:hover { background:#FAC775!important; }
-    /* White-outline on green background for Accept/Add/Override */
-    .btn-on-green button { background:white!important; border:1.5px solid #1D9E75!important; color:#085041!important; font-weight:500!important; }
-    .btn-on-green button:hover { background:#E1F5EE!important; }
-    .btn-override-green button { background:transparent!important; border:0.5px solid rgba(8,80,65,0.35)!important; color:#085041!important; }
-    .btn-override-green button:hover { background:rgba(255,255,255,0.5)!important; }
     </style>""", unsafe_allow_html=True)
 
     # ── Row 0: Species / Rate / Reset ─────────────────────────
@@ -1229,7 +1223,6 @@ with tab_odd:
             st.session_state.rate_reset_key += 1
             st.rerun()
     with r0c4:
-        st.markdown("<div class='btn-amber'>", unsafe_allow_html=True)
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
         if st.button("Clear inputs", use_container_width=True, key="odd_clear_inputs"):
             _input_keys = {
@@ -1251,6 +1244,35 @@ with tab_odd:
             st.rerun()
 
     st.divider()
+
+    st.markdown("""
+    <script>
+    function styleOddButtons() {
+        document.querySelectorAll('button').forEach(btn => {
+            const txt = btn.innerText.trim();
+            if (txt === 'Clear inputs') {
+                btn.style.background = '#FAEEDA';
+                btn.style.border = '1px solid #EF9F27';
+                btn.style.color = '#633806';
+                btn.style.fontWeight = '500';
+            }
+            if (txt === '✓ Accept' || txt === '+ Add to Odd Size List' || txt === '✓ Use this size') {
+                btn.style.background = 'white';
+                btn.style.border = '1.5px solid #1D9E75';
+                btn.style.color = '#085041';
+                btn.style.fontWeight = '500';
+            }
+            if (txt === 'Override size') {
+                btn.style.border = '0.5px solid rgba(8,80,65,0.4)';
+                btn.style.color = '#085041';
+            }
+        });
+    }
+    // Run on load and on DOM changes
+    styleOddButtons();
+    new MutationObserver(styleOddButtons).observe(document.body, {childList:true, subtree:true});
+    </script>
+    """, unsafe_allow_html=True)
 
     # ── Derive suggest values ─────────────────────────────────
     _has_dims = st.session_state.odd_cthk and st.session_state.odd_cwid
@@ -1357,7 +1379,6 @@ with tab_odd:
             )
             sc1, sc2 = st.columns([1, 4])
             with sc1:
-                st.markdown("<div class='btn-on-green'>", unsafe_allow_html=True)
                 if st.button("✓ Accept", key="odd_accept_suggest", use_container_width=True):
                     st.session_state.odd_accepted    = True
                     st.session_state.odd_acc_w_mm    = float(_sug_w)
@@ -1371,7 +1392,6 @@ with tab_odd:
                     st.session_state.odd_qft         = _sug_ft
                     st.rerun()
             with sc2:
-                st.markdown("<div class='btn-override-green'>", unsafe_allow_html=True)
                 if st.button("Override size", key="odd_override"):
                     st.session_state.odd_accepted = False
                     st.session_state.odd_acc_lbl  = None
@@ -1435,7 +1455,6 @@ with tab_odd:
             st.session_state.odd_qty = st.number_input("Qty (pcs)", min_value=1, value=st.session_state.odd_qty, step=1, key="odd_qty_acc")
             line_acc = round(price_a * st.session_state.odd_qty, 2)
             st.markdown(f'<div style="font-size:13px;color:#0F6E56;margin:4px 0">× S${price_a}/pc = <b style="color:#085041">S${line_acc:,.2f}</b></div>', unsafe_allow_html=True)
-            st.markdown("<div class='btn-on-green'>", unsafe_allow_html=True)
             if st.button("+ Add to Odd Size List", key="odd_add_accepted", use_container_width=True):
                 _cthk_d = st.session_state.odd_cthk or acc_h
                 _cwid_d = st.session_state.odd_cwid or acc_w
