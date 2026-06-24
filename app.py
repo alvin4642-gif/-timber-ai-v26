@@ -651,10 +651,8 @@ def build_reply(lines, total, is_timber=True, is_plywood=False, extra_note=""):
         out.append("- Length: +-25~50mm")
         out.append("Plywood:")
         out.append("- Thickness: +-0.8~1.2mm")
-        out.append("- Length/Width: +-2~3mm")
     elif is_plywood:
         out.append("- Thickness: +-0.8~1.2mm")
-        out.append("- Length/Width: +-2~3mm")
     else:
         # Timber only (default)
         out.append("- Thickness/Width: +-1~2mm")
