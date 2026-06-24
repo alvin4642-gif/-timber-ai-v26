@@ -83,10 +83,10 @@ FT_TO_M      = {
 }
 
 def ft_to_m_display(ft):
-    """Return m label for any ft value — integer uses trade lookup, half-ft computed."""
+    """Return m label for any ft value — integer uses trade lookup, half-ft rounded to 1dp."""
     if ft in FT_TO_M:
         return FT_TO_M[ft]
-    return round(math.floor(ft * 0.3048 * 100) / 100, 2)
+    return round(ft * 0.3048, 1)
 TIMBER_DENSITY_KG_M3 = 706  # calibrated to trade standard: 7200 / (w_inch * h_inch * l_ft)
 
 STANDARD_SIZES = [
@@ -1201,6 +1201,14 @@ with tab_odd:
     .os-sug{background:#E1F5EE;border:0.5px solid #5DCAA5;border-radius:8px;padding:10px 14px;flex:1}
     .os-step3{background:#E1F5EE;border:0.5px solid #5DCAA5;border-radius:8px;padding:10px 14px;flex:1}
     .os-idle-box{background:#f7f7f7;border-radius:8px;padding:10px 14px;flex:1;color:#aaa;font-size:13px}
+    /* Amber Clear Inputs */
+    .btn-amber button { background:#FAEEDA!important; border:1px solid #EF9F27!important; color:#633806!important; font-weight:500!important; }
+    .btn-amber button:hover { background:#FAC775!important; }
+    /* White-outline on green background for Accept/Add/Override */
+    .btn-on-green button { background:white!important; border:1.5px solid #1D9E75!important; color:#085041!important; font-weight:500!important; }
+    .btn-on-green button:hover { background:#E1F5EE!important; }
+    .btn-override-green button { background:transparent!important; border:0.5px solid rgba(8,80,65,0.35)!important; color:#085041!important; }
+    .btn-override-green button:hover { background:rgba(255,255,255,0.5)!important; }
     </style>""", unsafe_allow_html=True)
 
     # ── Row 0: Species / Rate / Reset ─────────────────────────
@@ -1221,6 +1229,7 @@ with tab_odd:
             st.session_state.rate_reset_key += 1
             st.rerun()
     with r0c4:
+        st.markdown("<div class='btn-amber'>", unsafe_allow_html=True)
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
         if st.button("Clear inputs", use_container_width=True, key="odd_clear_inputs"):
             _input_keys = {
@@ -1253,8 +1262,10 @@ with tab_odd:
         _sug = suggest_quote_size(_cwid_mm, _cthk_mm)
         _clen_val = st.session_state.odd_clen; _clu = st.session_state.odd_clu
         if _clen_val:
-            _clen_m = float(_clen_val) if _clu == "m" else float(_clen_val) * 0.3048
-            _sug_ft = m_to_half_ft(_clen_m)
+            if _clu == "ft":
+                _sug_ft = math.ceil(float(_clen_val) * 2) / 2
+            else:
+                _sug_ft = m_to_half_ft(float(_clen_val))
         else:
             _sug_ft = 8
         if _sug:
@@ -1280,16 +1291,16 @@ with tab_odd:
         st.markdown(f'<div class="os-num {s1_cls}" style="margin-top:20px">{s1_num}</div>', unsafe_allow_html=True)
     with s1b:
         st.markdown("<div style='font-size:11px;color:var(--color-text-secondary);margin-bottom:4px'>Paste or type customer dimensions</div>", unsafe_allow_html=True)
-        p1, p2, p3, p4, p5, p6, p7 = st.columns([2.5, 0.7, 1, 1, 1, 0.6, 0.6])
+        p1, p2, p3, p4, p5, p6, p7 = st.columns([2.5, 0.7, 0.6, 1, 1, 1, 0.6])
         with p1: st.text_input("Paste", placeholder="e.g. 200×400×1600 or T200 W400 L1600", label_visibility="collapsed", key="odd_quickfill_inp")
         with p2:
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
             qf_btn = st.button("Fill ↓", use_container_width=True, key="odd_qf_btn")
-        with p3: st.session_state.odd_cthk = st.number_input("Thk (mm)", min_value=None, value=st.session_state.odd_cthk, placeholder="Thk", step=0.5, format="%.1f", key=f"odd_cthk_inp_{_fk}")
-        with p4: st.session_state.odd_cwid = st.number_input("Wid (mm)", min_value=None, value=st.session_state.odd_cwid, placeholder="Wid", step=0.5, format="%.1f", key=f"odd_cwid_inp_{_fk}")
-        with p5: st.session_state.odd_clen = st.number_input("Len",      min_value=None, value=st.session_state.odd_clen, placeholder="Len", step=0.1, format="%.2f", key=f"odd_clen_inp_{_fk}")
-        with p6: st.session_state.odd_clu  = st.selectbox("LenU", ["m","ft"], index=["m","ft"].index(st.session_state.odd_clu), key=f"odd_clu_sel_{_fk}", label_visibility="collapsed")
-        with p7: st.session_state.odd_ctu  = st.selectbox("TU",   ["mm","inch"], index=["mm","inch"].index(st.session_state.odd_ctu), key=f"odd_ctu_sel_{_fk}", label_visibility="collapsed")
+        with p3: st.session_state.odd_ctu  = st.selectbox("Thk unit", ["mm","inch"], index=["mm","inch"].index(st.session_state.odd_ctu), key=f"odd_ctu_sel_{_fk}")
+        with p4: st.session_state.odd_cthk = st.number_input("Thk", min_value=None, value=st.session_state.odd_cthk, placeholder="Thk", step=0.5, format="%.1f", key=f"odd_cthk_inp_{_fk}")
+        with p5: st.session_state.odd_cwid = st.number_input("Wid (mm)", min_value=None, value=st.session_state.odd_cwid, placeholder="Wid", step=0.5, format="%.1f", key=f"odd_cwid_inp_{_fk}")
+        with p6: st.session_state.odd_clen = st.number_input("Len",      min_value=None, value=st.session_state.odd_clen, placeholder="Len", step=0.1, format="%.2f", key=f"odd_clen_inp_{_fk}")
+        with p7: st.session_state.odd_clu  = st.selectbox("Len unit", ["m","ft"], index=["m","ft"].index(st.session_state.odd_clu), key=f"odd_clu_sel_{_fk}")
 
     # Quick Fill parse
     _qf_val = st.session_state.get("odd_quickfill_inp", "").strip()
@@ -1346,6 +1357,7 @@ with tab_odd:
             )
             sc1, sc2 = st.columns([1, 4])
             with sc1:
+                st.markdown("<div class='btn-on-green'>", unsafe_allow_html=True)
                 if st.button("✓ Accept", key="odd_accept_suggest", use_container_width=True):
                     st.session_state.odd_accepted    = True
                     st.session_state.odd_acc_w_mm    = float(_sug_w)
@@ -1359,7 +1371,8 @@ with tab_odd:
                     st.session_state.odd_qft         = _sug_ft
                     st.rerun()
             with sc2:
-                if st.button("override — enter size manually", key="odd_override"):
+                st.markdown("<div class='btn-override-green'>", unsafe_allow_html=True)
+                if st.button("Override size", key="odd_override"):
                     st.session_state.odd_accepted = False
                     st.session_state.odd_acc_lbl  = None
                     st.session_state.odd_qmode    = "free"
@@ -1422,7 +1435,8 @@ with tab_odd:
             st.session_state.odd_qty = st.number_input("Qty (pcs)", min_value=1, value=st.session_state.odd_qty, step=1, key="odd_qty_acc")
             line_acc = round(price_a * st.session_state.odd_qty, 2)
             st.markdown(f'<div style="font-size:13px;color:#0F6E56;margin:4px 0">× S${price_a}/pc = <b style="color:#085041">S${line_acc:,.2f}</b></div>', unsafe_allow_html=True)
-            if st.button("+ Add to Odd Size List", key="odd_add_accepted", type="primary", use_container_width=True):
+            st.markdown("<div class='btn-on-green'>", unsafe_allow_html=True)
+            if st.button("+ Add to Odd Size List", key="odd_add_accepted", use_container_width=True):
                 _cthk_d = st.session_state.odd_cthk or acc_h
                 _cwid_d = st.session_state.odd_cwid or acc_w
                 _clen_d = st.session_state.odd_clen or ft_to_m_display(acc_ft)
