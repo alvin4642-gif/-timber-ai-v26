@@ -1479,6 +1479,9 @@ with tab_odd:
                     "size":        acc_full,
                     "quote_size":  acc_full,
                     "cust_size":   cust_size,
+                    "cust_thk_mm": _cthk_d,
+                    "cust_wid_mm": _cwid_d,
+                    "cust_len_m":  float(_clen_d) if _clu_d == "m" else None,
                     "w_mm": acc_w, "h_mm": acc_h, "ft": acc_ft,
                     "nom_w": nom_w_a, "nom_h": nom_h_a,
                     "rate":        odd_rate,
@@ -1506,15 +1509,31 @@ with tab_odd:
     if st.session_state.odd_items:
         st.divider()
         for i, item in enumerate(st.session_state.odd_items):
-            oa, ob_col, oc, od = st.columns([3, 3, 1, 1])
-            with oa:
-                st.markdown(f"**{item['species']}**")
-                st.caption(f"Customer: {item['cust_size']}  →  Priced as: {item['quote_size']}")
-            with ob_col:
-                st.markdown(f"S\\${item['price']}/pc &nbsp;×&nbsp; {item['qty']} =&nbsp; **S\\${item['line_total']:,.2f}**", unsafe_allow_html=True)
+            st.markdown(
+                f'<div style="border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);'
+                f'padding:10px 14px;margin-bottom:4px;background:var(--color-background-primary)">'
+                f'<div style="font-weight:500;font-size:14px;color:var(--color-text-primary)">{item["species"]}</div>'
+                f'<div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">'
+                f'Customer: {item["cust_size"]} → Priced as: {item["quote_size"]}</div>'
+                f'<div style="font-size:13px;color:var(--color-text-secondary);margin-top:4px">'
+                f'S${item["price"]}/pc × {item["qty"]} pcs = <b style="color:var(--color-text-primary)">S${item["line_total"]:,.2f}</b></div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+            oc, od, _ = st.columns([1, 1, 10])
             with oc:
-                if st.button("✏️", key=f"eo_{i}"):
-                    st.session_state.odd_items.pop(i); st.session_state.odd_ready=False; st.rerun()
+                if st.button("↺", key=f"eo_{i}", help="Re-enter dimensions — restores this item to Step 1. Other items stay in the list."):
+                    _it = st.session_state.odd_items.pop(i)
+                    st.session_state["odd_cthk"]     = _it.get("cust_thk_mm")
+                    st.session_state["odd_cwid"]     = _it.get("cust_wid_mm")
+                    st.session_state["odd_clen"]     = _it.get("cust_len_m")
+                    st.session_state["odd_clu"]      = "m"
+                    st.session_state["odd_ctu"]      = "mm"
+                    st.session_state["odd_sp"]       = _it["species"]
+                    st.session_state["odd_accepted"] = False
+                    st.session_state["odd_ready"]    = False
+                    st.session_state["qf_fill_key"] += 1
+                    st.rerun()
             with od:
                 if st.button("🗑️", key=f"do_{i}"):
                     st.session_state.odd_items.pop(i); st.session_state.odd_ready=False; st.rerun()
