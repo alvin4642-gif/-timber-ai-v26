@@ -1064,45 +1064,45 @@ with tab_quote:
             if mixed_rates:
                 st.markdown(
                     f'<div style="background:#FAEEDA;border:0.5px solid #FAC775;'
-                    f'border-radius:var(--border-radius-md);padding:10px 14px;margin-bottom:6px">'
-                    f'<div style="display:flex;justify-content:space-between;align-items:center">'
-                    f'<div><span style="font-weight:500;font-size:14px;color:#412402">'
-                    f'{item["species"]} &nbsp;{item["size"]}</span>'
-                    f'<span style="display:inline-block;font-size:11px;padding:1px 8px;border-radius:99px;'
-                    f'background:#FAC775;color:#412402;margin-left:8px">@S${locked_rate:,}/ton</span></div>'
-                    f'<div style="display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:16px">'
-                    f'<span style="font-size:13px;color:#633806;white-space:nowrap">'
-                    f'S${locked_price}/pc × {item["qty"]} = S${locked_total:,.2f}</span></div></div>'
-                    f'<div style="font-size:11px;color:#854F0B;margin-top:4px">'
-                    f'⚠️ This {item["species"]} item uses a different rate from others in this quote</div></div>',
+                    f'border-radius:var(--border-radius-md);padding:10px 14px;margin-bottom:4px">'
+                    f'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+                    f'<div style="min-width:0;flex:1">'
+                    f'<div style="font-weight:500;font-size:14px;color:#412402;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
+                    f'{item["species"]} · {item["size"]}</div>'
+                    f'<div style="margin-top:3px">'
+                    f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;background:#FAC775;color:#412402">@S${locked_rate:,}/ton</span>'
+                    f'</div>'
+                    f'<div style="font-size:13px;color:#633806;margin-top:4px">'
+                    f'S${locked_price}/pc × {item["qty"]} pcs = <b>S${locked_total:,.2f}</b></div>'
+                    f'<div style="font-size:11px;color:#854F0B;margin-top:3px">⚠️ Different rate from other {item["species"]} items</div>'
+                    f'</div></div></div>',
                     unsafe_allow_html=True
                 )
-                col_c2, _ = st.columns([1, 11])
-                with col_c2:
-                    if st.button("🗑️", key=f"dt_{i}"):
-                        st.session_state.order_items.pop(i)
-                        st.session_state.q_ready = False
-                        st.rerun()
             else:
                 st.markdown(
                     f'<div style="border:0.5px solid var(--color-border-tertiary);'
-                    f'border-radius:var(--border-radius-md);padding:10px 14px;margin-bottom:6px;'
-                    f'background:var(--color-background-primary);display:flex;justify-content:space-between;align-items:center">'
-                    f'<div><span style="font-weight:500;font-size:14px;color:var(--color-text-primary)">'
-                    f'{item["species"]} &nbsp;{item["size"]}</span>'
-                    f'<span style="display:inline-block;font-size:11px;padding:1px 8px;border-radius:99px;'
+                    f'border-radius:var(--border-radius-md);padding:10px 14px;margin-bottom:4px;'
+                    f'background:var(--color-background-primary)">'
+                    f'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+                    f'<div style="min-width:0;flex:1">'
+                    f'<div style="font-weight:500;font-size:14px;color:var(--color-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
+                    f'{item["species"]} · {item["size"]}</div>'
+                    f'<div style="margin-top:3px">'
+                    f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;'
                     f'background:var(--color-background-secondary);color:var(--color-text-secondary);'
-                    f'border:0.5px solid var(--color-border-tertiary);margin-left:8px">@S${locked_rate:,}/ton</span></div>'
-                    f'<span style="font-size:13px;color:var(--color-text-secondary);white-space:nowrap">'
-                    f'S${locked_price}/pc × {item["qty"]} = S${locked_total:,.2f}</span></div>',
+                    f'border:0.5px solid var(--color-border-tertiary)">@S${locked_rate:,}/ton</span>'
+                    f'</div>'
+                    f'<div style="font-size:13px;color:var(--color-text-secondary);margin-top:4px">'
+                    f'S${locked_price}/pc × {item["qty"]} pcs = <b style="color:var(--color-text-primary)">S${locked_total:,.2f}</b></div>'
+                    f'</div></div></div>',
                     unsafe_allow_html=True
                 )
-                col_c2, _ = st.columns([1, 11])
-                with col_c2:
-                    if st.button("🗑️", key=f"dt_{i}"):
-                        st.session_state.order_items.pop(i)
-                        st.session_state.q_ready = False
-                        st.rerun()
+            ic1, ic2 = st.columns([11, 1])
+            with ic2:
+                if st.button("🗑️", key=f"dt_{i}"):
+                    st.session_state.order_items.pop(i)
+                    st.session_state.q_ready = False
+                    st.rerun()
 
         st.divider()
         cg1, cg2, cg3 = st.columns([2, 1, 1])
