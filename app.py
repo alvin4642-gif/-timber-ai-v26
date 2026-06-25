@@ -1509,20 +1509,22 @@ with tab_odd:
     if st.session_state.odd_items:
         st.divider()
         for i, item in enumerate(st.session_state.odd_items):
-            st.markdown(
-                f'<div style="border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);'
-                f'padding:10px 14px;margin-bottom:4px;background:var(--color-background-primary)">'
-                f'<div style="font-weight:500;font-size:14px;color:var(--color-text-primary)">{item["species"]}</div>'
-                f'<div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">'
-                f'Customer: {item["cust_size"]} → Priced as: {item["quote_size"]}</div>'
-                f'<div style="font-size:13px;color:var(--color-text-secondary);margin-top:4px">'
-                f'S${item["price"]}/pc × {item["qty"]} pcs = <b style="color:var(--color-text-primary)">S${item["line_total"]:,.2f}</b></div>'
-                f'</div>',
-                unsafe_allow_html=True
-            )
-            oc, od, _ = st.columns([1, 1, 10])
-            with oc:
-                if st.button("↺", key=f"eo_{i}", help="Re-enter dimensions — restores this item to Step 1. Other items stay in the list."):
+            _ca, _cb, _cc = st.columns([8, 1, 1])
+            with _ca:
+                st.markdown(
+                    f'<div style="border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);'
+                    f'padding:10px 14px;background:var(--color-background-primary);margin-bottom:4px">'
+                    f'<div style="font-weight:500;font-size:14px;color:var(--color-text-primary)">{item["species"]}</div>'
+                    f'<div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">'
+                    f'Customer: {item["cust_size"]} → Priced as: {item["quote_size"]}</div>'
+                    f'<div style="font-size:13px;color:var(--color-text-secondary);margin-top:4px">'
+                    f'S${item["price"]}/pc × {item["qty"]} pcs = <b style="color:var(--color-text-primary)">S${item["line_total"]:,.2f}</b></div>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+            with _cb:
+                st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+                if st.button("↺", key=f"eo_{i}", help="Re-enter dimensions — restores this item to Step 1. Other items stay in the list.", use_container_width=True):
                     _it = st.session_state.odd_items.pop(i)
                     st.session_state["odd_cthk"]     = _it.get("cust_thk_mm")
                     st.session_state["odd_cwid"]     = _it.get("cust_wid_mm")
@@ -1534,10 +1536,10 @@ with tab_odd:
                     st.session_state["odd_ready"]    = False
                     st.session_state["qf_fill_key"] += 1
                     st.rerun()
-            with od:
-                if st.button("🗑️", key=f"do_{i}"):
+            with _cc:
+                st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+                if st.button("🗑️", key=f"do_{i}", use_container_width=True):
                     st.session_state.odd_items.pop(i); st.session_state.odd_ready=False; st.rerun()
-
         st.divider()
         og1, og2 = st.columns([2, 1])
         with og1: gen_odd = st.button("GENERATE ODD SIZE QUOTE", type="primary", use_container_width=True)
