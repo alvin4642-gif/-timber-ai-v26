@@ -1321,11 +1321,17 @@ with tab_odd:
             _sug_ft = 8
         if _sug:
             _sug_w, _sug_h, _sug_lbl, _, _ = _sug
-            _sug_full = f"{_sug_lbl} × {_sug_ft}ft ({ft_to_m_display(_sug_ft)}m)"
+            # In Sawn mode: show sawn dims prominently, planed in brackets
+            # In Planed mode: show planed label as before (it IS the finished size)
+            if _compare_sawn:
+                _sug_display_lbl = f"{_sug_w} x {_sug_h}mm sawn ({_sug_lbl} planed)"
+            else:
+                _sug_display_lbl = _sug_lbl
+            _sug_full = f"{_sug_display_lbl} × {_sug_ft}ft ({ft_to_m_display(_sug_ft)}m)"
             _nom_w_s = mm_to_nominal_inch(_sug_w); _nom_h_s = mm_to_nominal_inch(_sug_h)
             _, _sug_pcs, _sug_price = calc_from_mm(_sug_w, _sug_h, _sug_ft, odd_rate, _nom_w_s, _nom_h_s)
         else:
-            _sug_lbl = _sug_full = None; _sug_pcs = _sug_price = 0
+            _sug_display_lbl = _sug_lbl = _sug_full = None; _sug_pcs = _sug_price = 0
     else:
         _sug = None; _sug_lbl = _sug_full = None; _sug_pcs = _sug_price = 0
         _cthk_mm = _cwid_mm = 0; _sug_w = _sug_h = 0; _sug_ft = 8
