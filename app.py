@@ -375,8 +375,13 @@ def lookup_size(label):
             return entry[0], entry[1], entry[3], entry[4]
     return None, None, None, None
 
-def suggest_quote_size(cust_w_mm, cust_h_mm):
-    """Find nearest size where PLANED dimensions >= customer dimensions."""
+def suggest_quote_size(cust_w_mm, cust_h_mm, compare_sawn=False):
+    """Find nearest ODD_SIZES entry whose dims >= customer dimensions.
+    compare_sawn=True  → compare against sawn dims (entry[0], entry[1])
+                         use when customer supplies sawn/nominal size
+    compare_sawn=False → compare against planed dims from display label
+                         use when customer supplies finished/planed size needed
+    """
     import re
     def planed_dims(lbl):
         m = re.match(r'(\d+)\s*x\s*(\d+)mm', lbl)
@@ -384,16 +389,22 @@ def suggest_quote_size(cust_w_mm, cust_h_mm):
 
     best = None; best_dist = float('inf')
     for entry in ODD_SIZES:
-        pw, ph = planed_dims(entry[2])
-        if pw >= cust_w_mm and ph >= cust_h_mm:
-            dist = (pw - cust_w_mm) + (ph - cust_h_mm)
+        if compare_sawn:
+            # entry = (sawn_w, sawn_h, label, nom_w, nom_h)
+            ew, eh = entry[0], entry[1]
+        else:
+            ew, eh = planed_dims(entry[2])
+        if ew >= cust_w_mm and eh >= cust_h_mm:
+            dist = (ew - cust_w_mm) + (eh - cust_h_mm)
             if dist < best_dist:
                 best_dist = dist; best = entry
     if best is None:
-        # fallback: nearest by planed total distance
         for entry in ODD_SIZES:
-            pw, ph = planed_dims(entry[2])
-            dist = abs(pw - cust_w_mm) + abs(ph - cust_h_mm)
+            if compare_sawn:
+                ew, eh = entry[0], entry[1]
+            else:
+                ew, eh = planed_dims(entry[2])
+            dist = abs(ew - cust_w_mm) + abs(eh - cust_h_mm)
             if dist < best_dist:
                 best_dist = dist; best = entry
     return best
@@ -466,7 +477,7 @@ _defaults = {
     "sel_grade":   "MR China",
     "odd_cthk": None, "odd_cwid": None, "odd_clen": None,
     "odd_qthk": None, "odd_qwid": None, "odd_qlen": None,
-    "odd_ctu": "mm", "odd_cwu": "mm", "odd_clu": "m",
+    "odd_ctu": "mm", "odd_cwu": "mm", "odd_clu": "m", "odd_dim_type": "Sawn",
     "odd_sp":  "Kapur",
     "odd_qsize_label": None,
     "odd_qft": 8,
@@ -1219,7 +1230,7 @@ with tab_odd:
     # ── Row 0: Species / Rate / Reset ─────────────────────────
     _rrk = st.session_state.rate_reset_key
     _fk  = st.session_state.qf_fill_key
-    r0c1, r0c2, r0c3, r0c4 = st.columns([2, 2, 1, 1])
+    r0c1, r0c2, r0c5, r0c3, r0c4 = st.columns([2, 2, 1.4, 1, 1])
     _prev_sp = st.session_state.odd_sp
     with r0c1: st.session_state.odd_sp = st.selectbox("Species", SPECIES, index=SPECIES.index(st.session_state.odd_sp), key="odd_sp_sel")
     # Auto-switch rate when species changes
@@ -1228,6 +1239,12 @@ with tab_odd:
         st.rerun()
     _rrk = st.session_state.rate_reset_key  # re-read after possible increment
     with r0c2: odd_rate = st.number_input("Rate (S$/ton)", min_value=0, value=species_rate[st.session_state.odd_sp], step=50, key=f"odd_rate_{_rrk}")
+    with r0c5:
+        st.session_state.odd_dim_type = st.radio(
+            "Customer dim is", ["Sawn", "Planed"],
+            index=["Sawn","Planed"].index(st.session_state.odd_dim_type),
+            horizontal=True, key="odd_dim_type_radio",
+            help="Sawn: customer gives rough/nominal size (e.g. 350mm = 14\"). Planed: customer needs that exact finished size.")
     with r0c3:
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
         if st.button("↩ Reset rates", use_container_width=True, key="odd_reset_rates"):
@@ -1238,7 +1255,7 @@ with tab_odd:
         if st.button("Clear inputs", use_container_width=True, key="odd_clear_inputs"):
             _input_keys = {
                 "odd_cthk": None, "odd_cwid": None, "odd_clen": None,
-                "odd_ctu": "mm", "odd_cwu": "mm", "odd_clu": "m",
+                "odd_ctu": "mm", "odd_cwu": "mm", "odd_clu": "m", "odd_dim_type": "Sawn",
                 "odd_qsize_label": None, "odd_suggest": None,
                 "odd_qft": 8, "odd_qty": 1, "odd_qmode": "dropdown",
                 "odd_qthk_free": None, "odd_qwid_free": None,
@@ -1292,7 +1309,8 @@ with tab_odd:
         _cthk_mm = float(st.session_state.odd_cthk) * 25.4 if _ctu == "inch" else float(st.session_state.odd_cthk)
         _cwid_mm = float(st.session_state.odd_cwid)  * 25.4 if _cwu == "inch" else float(st.session_state.odd_cwid)
         _cthk_mm, _cwid_mm = sorted([_cthk_mm, _cwid_mm])
-        _sug = suggest_quote_size(_cwid_mm, _cthk_mm)
+        _compare_sawn = st.session_state.get("odd_dim_type", "Sawn") == "Sawn"
+        _sug = suggest_quote_size(_cwid_mm, _cthk_mm, compare_sawn=_compare_sawn)
         _clen_val = st.session_state.odd_clen; _clu = st.session_state.odd_clu
         if _clen_val:
             if _clu == "ft":
@@ -1724,12 +1742,10 @@ with tab_ply:
                     })
                     cl_price = item.get('sell_rounded', ceil_10cents(item['sell']))
                     cl=f"{item['grade']} plywood {item['thk']}mm @ S${cl_price:.2f}/sheet x {item['actual_qty']} = S${item['line_total']:,.2f}{moq_note_txt}"
-                    if "Fire Retardant" in item['grade']:
-                        cl+="\n  * Plywood may/will be wet & may/will have some powder when dried."
                     ply_reply.append(cl)
 
                 has_fr=any("Fire Retardant" in x["grade"] for x in st.session_state.ply_items)
-                fr_note="\n  * Plywood may/will be wet & may/will have some powder when dried." if has_fr else ""
+                fr_note="\n* Note (Fire Retardant): Plywood may/will be wet & may/will have some powder when dried." if has_fr else ""
                 reply_txt=build_reply(ply_reply,ply_grand,is_timber=False,is_plywood=True,extra_note=fr_note)
                 st.session_state.ply_ready=True; st.session_state.ply_reply=reply_txt
                 st.session_state.ply_total=ply_grand; st.session_state.ply_cost=ply_cost_total
