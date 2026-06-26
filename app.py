@@ -1,5 +1,5 @@
 # ============================================================
-# Timber AI Assistant V30 — PART 1 of 3
+# Timber AI Assistant V31 — PART 1 of 3
 # CONFIG & DATA
 # Paste this FIRST at the top of your app.py in GitHub
 # ============================================================
@@ -11,7 +11,7 @@ import requests
 import re
 from datetime import datetime
 
-st.set_page_config(layout="wide", page_title="Timber AI Assistant V30", page_icon="🪵")
+st.set_page_config(layout="wide", page_title="Timber AI Assistant V31", page_icon="🪵")
 
 # ============================================================
 # CSS
@@ -473,7 +473,10 @@ SPECIES_MAP = {
 # SESSION STATE
 # ============================================================
 _defaults = {
-    "order_items": [], "odd_items": [], "ply_items": [],
+    "order_items": [], "odd_items": [], "ply_items": [], "cca_items": [],
+    "cca_colour": "Brown — TimberTone",
+    "cca_rate": 5.0,
+    "cca_ready": False, "cca_reply": "", "cca_total": 0.0, "cca_nitem": 0,
     "sel_grade":   "MR China",
     "odd_cthk": None, "odd_cwid": None, "odd_clen": None,
     "odd_qthk": None, "odd_qwid": None, "odd_qlen": None,
@@ -518,7 +521,7 @@ def reset_all():
 st.markdown("""
 <div class="app-header">
   <div class="app-header-title">🪵 Timber AI Assistant
-    <span style="background:#1D9E75;color:white;font-size:13px;padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle">V30</span>
+    <span style="background:#1D9E75;color:white;font-size:13px;padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle">V31</span>
   </div>
   <div class="app-header-sub">Professional Quoting System &nbsp;·&nbsp; Prices in SGD</div>
 </div>
@@ -555,7 +558,7 @@ st.divider()
 # END OF PART 1 — paste Part 2 immediately below this line
 # ============================================================
 # ============================================================
-# Timber AI Assistant V30 — PART 2 of 3
+# Timber AI Assistant V31 — PART 2 of 3
 # FUNCTIONS: Gist helpers, calc engine, parser, UI utilities
 # Paste this SECOND, immediately after Part 1
 # ============================================================
@@ -986,15 +989,15 @@ def parsed_to_odd_item(p, species_rate_map):
 # END OF PART 2 — paste Part 3 immediately below this line
 # ============================================================
 # ============================================================
-# Timber AI Assistant V30 — PART 3 of 3
+# Timber AI Assistant V31 — PART 3 of 3
 # UI TABS: Quote Builder, Odd Size, Plywood, Suppliers, History
 # Paste this THIRD, immediately after Part 2
 # AI Parser and Plywood Cut-to-Size removed — built as separate apps
 # ============================================================
 
-tab_quote, tab_odd, tab_ply, tab_sup, tab_hist = st.tabs([
+tab_quote, tab_odd, tab_ply, tab_cca, tab_sup, tab_hist = st.tabs([
     "📋 Quote Builder", "📐 Odd Size", "🪵 Plywood",
-    "🏭 Suppliers", "🕘 History"
+    "🧪 CCA Treatment", "🏭 Suppliers", "🕘 History"
 ])
 
 # ============================================================
@@ -1824,7 +1827,7 @@ with tab_ply:
                         "moq_flag":item["moq_flag"],"moq_note":f"min {item['actual_qty']} sheets (requested {item['qty']})"
                     })
                     cl_price = item.get('sell_rounded', ceil_10cents(item['sell']))
-                    cl=f"{item['grade']} plywood {item['thk']}mm @ S${cl_price:.2f}/sheet x {item['actual_qty']} = S${item['line_total']:,.2f}{moq_note_txt}"
+                    cl=f"{item['grade']} plywood {item['thk']}mm x 1.22m x 2.44m @ S${cl_price:.2f}/sheet x {item['actual_qty']} = S${item['line_total']:,.2f}{moq_note_txt}"
                     ply_reply.append(cl)
 
                 has_fr=any("Fire Retardant" in x["grade"] for x in st.session_state.ply_items)
@@ -1864,7 +1867,208 @@ with tab_ply:
         ])
 
 # ============================================================
-# TAB 4 — SUPPLIERS
+# TAB 4 — CCA TREATMENT
+# ============================================================
+with tab_cca:
+    st.subheader("🧪 CCA Treatment Quote")
+    st.caption("Anti-termite / insect borer treatment. Pull items from QB or Plywood, then generate reply.")
+
+    # ── Colour + Rate ─────────────────────────────────────────
+    cc1, cc2 = st.columns([2, 2])
+    with cc1:
+        cca_colour = st.selectbox(
+            "Treatment colour",
+            ["Brown — TimberTone", "Colourless"],
+            index=["Brown — TimberTone", "Colourless"].index(st.session_state.cca_colour),
+            key="cca_colour_sel"
+        )
+        st.session_state.cca_colour = cca_colour
+    with cc2:
+        cca_rate = st.number_input(
+            "CCA rate (S$/pc)", min_value=0.0, value=float(st.session_state.cca_rate),
+            step=0.5, format="%.2f", key="cca_rate_inp"
+        )
+        st.session_state.cca_rate = cca_rate
+
+    st.divider()
+
+    # ── Pull from QB ──────────────────────────────────────────
+    st.markdown("#### Pull items from Quote Builder")
+    if st.session_state.order_items:
+        qb_labels = [
+            f"{it['species']} timber · {it['size']} × {it['qty']} pcs"
+            for it in st.session_state.order_items
+        ]
+        qb_sel = st.multiselect("Select QB timber items to treat:", qb_labels, key="cca_qb_sel")
+        if st.button("+ Add selected QB items", key="cca_pull_qb"):
+            for label in qb_sel:
+                idx = qb_labels.index(label)
+                it  = st.session_state.order_items[idx]
+                # Derive display dims from item: w_mm x h_mm x ft
+                _w = it["w_mm"]; _h = it["h_mm"]; _ft = it["ft"]
+                _nom_w = mm_to_nominal_inch(_w); _nom_h = mm_to_nominal_inch(_h)
+                _inch_lbl = f'{_nom_w}" x {_nom_h}"'
+                _m_lbl    = ft_to_m_display(_ft)
+                # planed dims from label (size field e.g. "95 x 20mm (4" x 1") x 12ft")
+                _dim_str  = f"{_w} x {_h}mm ({_inch_lbl}) x {_ft}ft ({_m_lbl}m)"
+                line_total = round(cca_rate * it["qty"], 2)
+                st.session_state.cca_items.append({
+                    "type":       "timber",
+                    "species":    it["species"],
+                    "dim_type":   "planed",
+                    "dim_str":    _dim_str,
+                    "qty":        it["qty"],
+                    "rate":       cca_rate,
+                    "line_total": line_total,
+                })
+            st.session_state.cca_ready = False
+            st.rerun()
+    else:
+        st.caption("No QB timber items — add items in Quote Builder tab first.")
+
+    st.divider()
+
+    # ── Pull from Plywood ─────────────────────────────────────
+    st.markdown("#### Pull items from Plywood")
+    if st.session_state.ply_items:
+        ply_labels = [
+            f"{it['grade']} {it['thk']}mm × {it['actual_qty']} sheets"
+            for it in st.session_state.ply_items
+        ]
+        ply_sel = st.multiselect("Select plywood items to treat:", ply_labels, key="cca_ply_sel")
+        if st.button("+ Add selected plywood items", key="cca_pull_ply"):
+            for label in ply_sel:
+                idx = ply_labels.index(label)
+                it  = st.session_state.ply_items[idx]
+                _dim_str = f"{it['thk']}mm x 1.22m x 2.44m"
+                line_total = round(cca_rate * it["actual_qty"], 2)
+                st.session_state.cca_items.append({
+                    "type":       "plywood",
+                    "grade":      it["grade"],
+                    "dim_str":    _dim_str,
+                    "qty":        it["actual_qty"],
+                    "rate":       cca_rate,
+                    "line_total": line_total,
+                })
+            st.session_state.cca_ready = False
+            st.rerun()
+    else:
+        st.caption("No plywood items — add items in Plywood tab first.")
+
+    st.divider()
+
+    # ── CCA item list ─────────────────────────────────────────
+    if st.session_state.cca_items:
+        st.markdown("**Items for CCA Treatment**")
+        for i, item in enumerate(st.session_state.cca_items):
+            _lbl = (f"{item['species']} timber {item.get('dim_type','planed')}"
+                    if item["type"] == "timber"
+                    else item["grade"])
+            ca, cb = st.columns([9, 1])
+            with ca:
+                st.markdown(
+                    f'<div style="border:0.5px solid var(--color-border-tertiary);'
+                    f'border-radius:var(--border-radius-md);padding:10px 14px;'
+                    f'background:var(--color-background-primary);margin-bottom:4px">'
+                    f'<div style="font-weight:500;font-size:14px">{_lbl}</div>'
+                    f'<div style="font-size:13px;color:var(--color-text-secondary);margin-top:2px">'
+                    f'{item["dim_str"]}</div>'
+                    f'<div style="font-size:13px;margin-top:4px">'
+                    f'S${item["rate"]:.2f}/pc × {item["qty"]} pcs = '
+                    f'<b>S${item["line_total"]:,.2f}</b></div>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+            with cb:
+                st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+                if st.button("🗑️", key=f"dcca_{i}"):
+                    st.session_state.cca_items.pop(i)
+                    st.session_state.cca_ready = False
+                    st.rerun()
+
+        cca_grand = round(sum(x["line_total"] for x in st.session_state.cca_items), 2)
+        st.markdown(
+            f'<div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);'
+            f'padding:10px 14px;margin-bottom:8px;font-size:13px;display:flex;justify-content:space-between">'
+            f'<span style="color:var(--color-text-secondary)">{len(st.session_state.cca_items)} item(s)</span>'
+            f'<b style="color:var(--color-text-primary)">S${cca_grand:,.2f}</b>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+
+        st.divider()
+        gc1, gc2 = st.columns([2, 1])
+        with gc1: gen_cca = st.button("GENERATE CCA QUOTE", type="primary", use_container_width=True)
+        with gc2:
+            if st.button("Clear CCA List", use_container_width=True):
+                st.session_state.cca_items = []
+                st.session_state.cca_ready = False
+                st.rerun()
+
+        if gen_cca:
+            _colour_lbl = st.session_state.cca_colour
+            _lines = []
+            _has_timber = any(x["type"] == "timber" for x in st.session_state.cca_items)
+            _has_ply    = any(x["type"] == "plywood" for x in st.session_state.cca_items)
+
+            for item in st.session_state.cca_items:
+                if item["type"] == "timber":
+                    _desc = (f"{item['species']} timber {item.get('dim_type','planed')} "
+                             f"with anti-termite / insect borer treatment ({_colour_lbl})")
+                else:
+                    _desc = (f"{item['grade']} plywood "
+                             f"with anti-termite / insect borer treatment ({_colour_lbl})")
+                _price_line = (f"{item['dim_str']} "
+                               f"@ S${item['rate']:.2f}/pc x {item['qty']} pcs = "
+                               f"S${item['line_total']:,.2f}")
+                _lines.append(f"{_desc}\n\n{_price_line}")
+
+            # Join items with blank line between each
+            _body = "\n\n".join(_lines)
+
+            # Build tolerances section
+            _tol_parts = []
+            if _has_timber:
+                _tol_parts.append("- Timber: ±1~2mm / ±25~50mm")
+            if _has_ply:
+                _tol_parts.append("- Plywood thickness: ±0.8~1.2mm")
+            _tol_str = "\n".join(_tol_parts)
+
+            cca_reply = (
+                f"{_body}\n\n"
+                f"Note: After treatment, timber/plywood may be wet and may have some powder when dried.\n\n"
+                f"Tolerances:\n{_tol_str}\n\n"
+                f"Delivery / Self Collection:\n"
+                f"30 Kranji Loop (Blk A) #04-05\n"
+                f"TimMac @ Kranji S739570"
+            )
+
+            st.session_state.cca_ready  = True
+            st.session_state.cca_reply  = cca_reply
+            st.session_state.cca_total  = cca_grand
+            st.session_state.cca_nitem  = len(st.session_state.cca_items)
+
+        if st.session_state.cca_ready:
+            st.divider()
+            st.subheader("Customer Reply (edit before sending)")
+            cca_edited = st.text_area("", st.session_state.cca_reply, height=350, key="cca_reply_out")
+            cx1, cx2 = st.columns(2)
+            with cx1:
+                st.download_button("📥 Download TXT", data=cca_edited,
+                    file_name=f"cca_quote_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                    mime="text/plain", use_container_width=True)
+            with cx2:
+                if st.button("💾 Save to History", type="primary", key="save_cca", use_container_width=True):
+                    ok = save_quote(st.session_state.cust_name, st.session_state.cust_mobile,
+                        st.session_state.cca_total, st.session_state.cca_nitem, cca_edited, 0,
+                        quote_type="CCA Treatment")
+                    if ok: st.success("✅ Saved!")
+                    else:  st.error("❌ Could not save.")
+    else:
+        st.info("Pull items from Quote Builder or Plywood tab above, then generate the CCA quote.")
+
+# ============================================================
+# TAB 5 — SUPPLIERS
 # ============================================================
 with tab_sup:
     st.markdown("""<div class="sup-header">
@@ -1903,7 +2107,7 @@ with tab_sup:
         render_table(margin_rows)
 
 # ============================================================
-# TAB 5 — HISTORY
+# TAB 6 — HISTORY
 # ============================================================
 with tab_hist:
     st.markdown("#### 🕘 Quote History")
@@ -1966,4 +2170,4 @@ with tab_hist:
 # FOOTER
 # ============================================================
 st.markdown("---")
-st.caption("Timber AI Assistant V30  · ALVIN  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
+st.caption("Timber AI Assistant V31  · ALVIN  ·  Prices in SGD  ·  30 sizes · 6~22ft · AI & Cut-to-Size moved to separate apps")
