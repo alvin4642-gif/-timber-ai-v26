@@ -1547,6 +1547,7 @@ with tab_odd:
 
         for i, item in enumerate(st.session_state.odd_items):
             _mixed = len(_odd_sp_rates.get(item["species"], set())) > 1
+            _pcs_floor = item.get("pcs_floor", math.floor(float(item["pcs_per_ton"])))
             _ca, _cb, _cc = st.columns([8, 1, 1])
             with _ca:
                 if _mixed:
@@ -1555,12 +1556,16 @@ with tab_odd:
                         f'padding:10px 14px;margin-bottom:4px">'
                         f'<div style="font-weight:500;font-size:14px;color:#412402">{item["species"]} '
                         f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;background:#FAC775;'
-                        f'color:#412402;border:0.5px solid #EF9F27;margin-left:4px">@S${item["rate"]:,}/ton \u26a0</span></div>'
+                        f'color:#412402;border:0.5px solid #EF9F27;margin-left:4px">@S${item["rate"]:,}/ton ⚠</span>'
+                        f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;background:#FAC775;'
+                        f'color:#412402;border:0.5px solid #EF9F27;margin-left:4px">{item.get("dim_type","Sawn").lower()}</span></div>'
                         f'<div style="font-size:12px;color:#854F0B;margin-top:2px">'
-                        f'Customer: {item["cust_size"]} \u2192 Priced as: {item["quote_size"]}</div>'
+                        f'Customer: {item["cust_size"]} → Priced as: {item["quote_size"]}</div>'
                         f'<div style="font-size:13px;color:#633806;margin-top:4px">'
-                        f'S${item["price"]}/pc \u00d7 {item["qty"]} pcs = <b style="color:#412402">S${item["line_total"]:,.2f}</b></div>'
-                        f'<div style="font-size:11px;color:#854F0B;margin-top:3px">\u26a0 Different rate from other {item["species"]} items in this quote</div>'
+                        f'S${item["price"]}/pc × {item["qty"]} pcs = <b style="color:#412402">S${item["line_total"]:,.2f}</b></div>'
+                        f'<div style="⚠ Different rate from other {item["species"]} items in this quote;font-size:11px;color:#854F0B;margin-top:3px">⚠ Different rate from other {item["species"]} items in this quote</div>'
+                        f'<div style="border-top:0.5px solid #EF9F27;margin-top:7px;padding-top:6px;font-size:12px;color:#854F0B">'
+                        f'{_pcs_floor} pcs/ton</div>'
                         f'</div>',
                         unsafe_allow_html=True
                     )
@@ -1571,14 +1576,21 @@ with tab_odd:
                         f'<div style="font-weight:500;font-size:14px;color:var(--color-text-primary)">{item["species"]} '
                         f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;'
                         f'background:var(--color-background-secondary);color:var(--color-text-secondary);'
-                        f'border:0.5px solid var(--color-border-tertiary);margin-left:4px">@S${item["rate"]:,}/ton</span></div>'
+                        f'border:0.5px solid var(--color-border-tertiary);margin-left:4px">@S${item["rate"]:,}/ton</span>'
+                        f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;'
+                        f'background:var(--color-background-secondary);color:var(--color-text-secondary);'
+                        f'border:0.5px solid var(--color-border-tertiary);margin-left:4px">{item.get("dim_type","Sawn").lower()}</span></div>'
                         f'<div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">'
-                        f'Customer: {item["cust_size"]} \u2192 Priced as: {item["quote_size"]}</div>'
+                        f'Customer: {item["cust_size"]} → Priced as: {item["quote_size"]}</div>'
                         f'<div style="font-size:13px;color:var(--color-text-secondary);margin-top:4px">'
-                        f'S${item["price"]}/pc \u00d7 {item["qty"]} pcs = <b style="color:var(--color-text-primary)">S${item["line_total"]:,.2f}</b></div>'
+                        f'S${item["price"]}/pc × {item["qty"]} pcs = <b style="color:var(--color-text-primary)">S${item["line_total"]:,.2f}</b></div>'
+                        f'<div style="border-top:0.5px solid var(--color-border-tertiary);margin-top:7px;padding-top:6px;'
+                        f'font-size:12px;color:var(--color-text-secondary)">'
+                        f'{_pcs_floor} pcs/ton</div>'
                         f'</div>',
                         unsafe_allow_html=True
                     )
+            with _cb:
                 st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
                 if st.button("↺", key=f"eo_{i}", help="Re-enter dimensions — restores this item to Step 1. Other items stay in the list.", use_container_width=True):
                     _it = st.session_state.odd_items.pop(i)
@@ -1596,6 +1608,23 @@ with tab_odd:
                 st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
                 if st.button("🗑️", key=f"do_{i}", use_container_width=True):
                     st.session_state.odd_items.pop(i); st.session_state.odd_ready=False; st.rerun()
+        # Summary bar
+        _odd_gt = sum(it["line_total"] for it in st.session_state.odd_items)
+        _odd_gc = sum(round(it["line_total"]*0.85,2) for it in st.session_state.odd_items)
+        _odd_gp = round(_odd_gt - _odd_gc, 2)
+        _odd_gm = round(_odd_gp / _odd_gt * 100, 1) if _odd_gt > 0 else 0
+        _n = len(st.session_state.odd_items)
+        st.markdown(
+            f'<div style="display:flex;justify-content:space-between;align-items:center;'
+            f'background:var(--color-background-secondary);border-radius:var(--border-radius-md);'
+            f'padding:10px 14px;margin-bottom:8px;font-size:13px">'
+            f'<span style="color:var(--color-text-secondary)">{_n} item(s) · Margin {_odd_gm}%</span>'
+            f'<span><b style="color:var(--color-text-primary)">S${_odd_gt:,.2f}</b>'
+            f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;'
+            f'background:#E1F5EE;color:#0F6E56;margin-left:8px">Profit S${_odd_gp:,.2f}</span></span>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
         st.divider()
         og1, og2 = st.columns([2, 1])
         with og1: gen_odd = st.button("GENERATE ODD SIZE QUOTE", type="primary", use_container_width=True)
@@ -1635,9 +1664,12 @@ with tab_odd:
             # Sort: sawn first, then planed; within same type sort by species
             _group_order = sorted(_groups.keys(), key=lambda k: (0 if k[1]=="Sawn" else 1, k[0]))
             odd_reply = []
-            for _gkey in _group_order:
+            for _gi, _gkey in enumerate(_group_order):
                 _sp, _dt = _gkey
                 _items = _groups[_gkey]
+                # Blank line before each group except the first
+                if _gi > 0:
+                    odd_reply.append("")
                 odd_reply.append(f"{_sp} timber {_dt.lower()}")
                 for _it in _items:
                     odd_reply.append(
@@ -1650,7 +1682,6 @@ with tab_odd:
             st.session_state.odd_nitem=len(odd_reply); st.session_state.odd_log=odd_log
 
         if st.session_state.odd_ready:
-            render_staff_log(st.session_state.odd_log,st.session_state.odd_total,st.session_state.odd_cost)
             st.divider()
             st.subheader("Customer Reply (edit before sending)")
             odd_edited=st.text_area("",st.session_state.odd_reply,height=300,key="odd_reply_out")
