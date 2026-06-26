@@ -1322,11 +1322,18 @@ with tab_odd:
         if _sug:
             _sug_w, _sug_h, _sug_lbl, _, _ = _sug
             # In Sawn mode: show sawn dims prominently, planed in brackets
-            # In Planed mode: show planed label as before (it IS the finished size)
+            # Sawn mode: show sawn dims + nominal inch label
+            # Planed mode: show planed dims + nominal inch label
+            # Both: clean single-dim display, no brackets
+            _nom_inch_lbl = f"({mm_to_nominal_inch(_sug_w)}\" x {mm_to_nominal_inch(_sug_h)}\")"
             if _compare_sawn:
-                _sug_display_lbl = f"{_sug_w} x {_sug_h}mm sawn ({_sug_lbl} planed)"
+                _sug_display_lbl = f"{_sug_w} x {_sug_h}mm {_nom_inch_lbl}"
             else:
-                _sug_display_lbl = _sug_lbl
+                # planed dims = sawn - 5mm per dim (from label)
+                import re as _re
+                _pm = _re.match(r'(\d+)\s*x\s*(\d+)mm', _sug_lbl)
+                _pw, _ph = (int(_pm.group(1)), int(_pm.group(2))) if _pm else (_sug_w-5, _sug_h-5)
+                _sug_display_lbl = f"{_pw} x {_ph}mm {_nom_inch_lbl}"
             _sug_full = f"{_sug_display_lbl} × {_sug_ft}ft ({ft_to_m_display(_sug_ft)}m)"
             _nom_w_s = mm_to_nominal_inch(_sug_w); _nom_h_s = mm_to_nominal_inch(_sug_h)
             _, _sug_pcs, _sug_price = calc_from_mm(_sug_w, _sug_h, _sug_ft, odd_rate, _nom_w_s, _nom_h_s)
@@ -1498,6 +1505,7 @@ with tab_odd:
                 _clu_d  = st.session_state.odd_clu
                 cust_size = f"{_cthk_d}mm × {_cwid_d}mm × {_clen_d}{_clu_d}"
                 raw_a2, pcs_fl_a2, price_a2 = calc_from_mm(acc_w, acc_h, acc_ft, odd_rate, nom_w_a, nom_h_a)
+                _dim_type = st.session_state.get("odd_dim_type", "Sawn")
                 st.session_state.odd_items.append({
                     "species":     st.session_state.odd_sp,
                     "size":        acc_full,
@@ -1515,6 +1523,7 @@ with tab_odd:
                     "qty":         st.session_state.odd_qty,
                     "line_total":  round(price_a2 * st.session_state.odd_qty, 2),
                     "small_qty":   st.session_state.odd_qty < SMALL_QTY,
+                    "dim_type":    _dim_type,
                 })
                 # Reset for next entry
                 for k, v in {"odd_cthk":None,"odd_cwid":None,"odd_clen":None,
@@ -1595,7 +1604,7 @@ with tab_odd:
                 st.session_state.odd_items=[]; st.session_state.odd_ready=False; st.rerun()
 
         if gen_odd:
-            odd_log=[]; odd_reply=[]; odd_total=0; odd_cost=0
+            odd_log=[]; odd_total=0; odd_cost=0
             for item in st.session_state.odd_items:
                 odd_total+=item["line_total"]
                 cost_est=round(item["line_total"]*0.85,2); odd_cost+=cost_est
@@ -1615,12 +1624,26 @@ with tab_odd:
                     },
                     "profit_line":f"S${profit:,.2f}","margin_pct":f"{margin_pct}%","small_qty":item["small_qty"]
                 })
-                odd_reply.append(
-                    f"{item['species']} timber\nYour size: {item['cust_size']}\n"
-                    f"Supply size: {item['quote_size']}\n"
-                    f"@ S${item['price']}/pcs x {item['qty']} = S${item['line_total']:,.2f}"
-                )
             odd_total=round(odd_total,2); odd_cost=round(odd_cost,2)
+
+            # Build grouped reply: group by (species, dim_type), sawn groups before planed
+            from collections import defaultdict as _dd
+            _groups = _dd(list)
+            for item in st.session_state.odd_items:
+                _dt = item.get("dim_type", "Sawn")
+                _groups[(item["species"], _dt)].append(item)
+            # Sort: sawn first, then planed; within same type sort by species
+            _group_order = sorted(_groups.keys(), key=lambda k: (0 if k[1]=="Sawn" else 1, k[0]))
+            odd_reply = []
+            for _gkey in _group_order:
+                _sp, _dt = _gkey
+                _items = _groups[_gkey]
+                odd_reply.append(f"{_sp} timber {_dt.lower()}")
+                for _it in _items:
+                    odd_reply.append(
+                        f"{_it['quote_size']}\n"
+                        f"@ S${_it['price']}/pcs x {_it['qty']} = S${_it['line_total']:,.2f}"
+                    )
             reply_text=build_reply(odd_reply,odd_total,is_timber=True,is_plywood=False)
             st.session_state.odd_ready=True; st.session_state.odd_reply=reply_text
             st.session_state.odd_total=odd_total; st.session_state.odd_cost=odd_cost
