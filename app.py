@@ -1532,21 +1532,44 @@ with tab_odd:
 
     if st.session_state.odd_items:
         st.divider()
+        _odd_sp_rates = {}
+        for _oit in st.session_state.odd_items:
+            _odd_sp_rates.setdefault(_oit["species"], set()).add(_oit["rate"])
+
         for i, item in enumerate(st.session_state.odd_items):
+            _mixed = len(_odd_sp_rates.get(item["species"], set())) > 1
             _ca, _cb, _cc = st.columns([8, 1, 1])
             with _ca:
-                st.markdown(
-                    f'<div style="border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);'
-                    f'padding:10px 14px;background:var(--color-background-primary);margin-bottom:4px">'
-                    f'<div style="font-weight:500;font-size:14px;color:var(--color-text-primary)">{item["species"]}</div>'
-                    f'<div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">'
-                    f'Customer: {item["cust_size"]} → Priced as: {item["quote_size"]}</div>'
-                    f'<div style="font-size:13px;color:var(--color-text-secondary);margin-top:4px">'
-                    f'S${item["price"]}/pc × {item["qty"]} pcs = <b style="color:var(--color-text-primary)">S${item["line_total"]:,.2f}</b></div>'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
-            with _cb:
+                if _mixed:
+                    st.markdown(
+                        f'<div style="background:#FAEEDA;border:0.5px solid #EF9F27;border-radius:var(--border-radius-md);'
+                        f'padding:10px 14px;margin-bottom:4px">'
+                        f'<div style="font-weight:500;font-size:14px;color:#412402">{item["species"]} '
+                        f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;background:#FAC775;'
+                        f'color:#412402;border:0.5px solid #EF9F27;margin-left:4px">@S${item["rate"]:,}/ton \u26a0</span></div>'
+                        f'<div style="font-size:12px;color:#854F0B;margin-top:2px">'
+                        f'Customer: {item["cust_size"]} \u2192 Priced as: {item["quote_size"]}</div>'
+                        f'<div style="font-size:13px;color:#633806;margin-top:4px">'
+                        f'S${item["price"]}/pc \u00d7 {item["qty"]} pcs = <b style="color:#412402">S${item["line_total"]:,.2f}</b></div>'
+                        f'<div style="font-size:11px;color:#854F0B;margin-top:3px">\u26a0 Different rate from other {item["species"]} items in this quote</div>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+                else:
+                    st.markdown(
+                        f'<div style="border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);'
+                        f'padding:10px 14px;background:var(--color-background-primary);margin-bottom:4px">'
+                        f'<div style="font-weight:500;font-size:14px;color:var(--color-text-primary)">{item["species"]} '
+                        f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;'
+                        f'background:var(--color-background-secondary);color:var(--color-text-secondary);'
+                        f'border:0.5px solid var(--color-border-tertiary);margin-left:4px">@S${item["rate"]:,}/ton</span></div>'
+                        f'<div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">'
+                        f'Customer: {item["cust_size"]} \u2192 Priced as: {item["quote_size"]}</div>'
+                        f'<div style="font-size:13px;color:var(--color-text-secondary);margin-top:4px">'
+                        f'S${item["price"]}/pc \u00d7 {item["qty"]} pcs = <b style="color:var(--color-text-primary)">S${item["line_total"]:,.2f}</b></div>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
                 st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
                 if st.button("↺", key=f"eo_{i}", help="Re-enter dimensions — restores this item to Step 1. Other items stay in the list.", use_container_width=True):
                     _it = st.session_state.odd_items.pop(i)
