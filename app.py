@@ -473,10 +473,9 @@ SPECIES_MAP = {
 # SESSION STATE
 # ============================================================
 _defaults = {
-    "order_items": [], "odd_items": [], "ply_items": [], "cca_items": [],
+    "order_items": [], "odd_items": [], "ply_items": [],
     "cca_colour": "Brown — TimberTone",
     "cca_rate": 5.0,
-    "cca_ready": False, "cca_reply": "", "cca_total": 0.0, "cca_nitem": 0,
     "sel_grade":   "MR China",
     "odd_cthk": None, "odd_cwid": None, "odd_clen": None,
     "odd_qthk": None, "odd_qwid": None, "odd_qlen": None,
@@ -552,6 +551,24 @@ species_rate = {
     "Kapur": kapur_rate, "Balau": balau_rate, "Chengal": cheng_rate,
     "Mixed Keruing": mkeruing_rate, "Pure Keruing": pkeruing_rate
 }
+
+# CCA Treatment inputs — shared across QB, Odd Size, Plywood tabs
+cc1, cc2, cc3 = st.columns([2, 2, 7])
+with cc1:
+    _cca_colour_opts = ["Brown — TimberTone", "Colourless"]
+    cca_colour = st.selectbox(
+        "CCA Colour", _cca_colour_opts,
+        index=_cca_colour_opts.index(st.session_state.cca_colour),
+        key="cca_colour_sel"
+    )
+    st.session_state.cca_colour = cca_colour
+with cc2:
+    cca_rate = st.number_input(
+        "CCA Rate (S$/pc)", min_value=0.0,
+        value=float(st.session_state.cca_rate),
+        step=0.5, format="%.2f", key=f"cca_rate_inp_{_rk}"
+    )
+    st.session_state.cca_rate = cca_rate
 st.divider()
 
 # ============================================================
@@ -995,9 +1012,9 @@ def parsed_to_odd_item(p, species_rate_map):
 # AI Parser and Plywood Cut-to-Size removed — built as separate apps
 # ============================================================
 
-tab_quote, tab_odd, tab_ply, tab_cca, tab_sup, tab_hist = st.tabs([
+tab_quote, tab_odd, tab_ply, tab_sup, tab_hist = st.tabs([
     "📋 Quote Builder", "📐 Odd Size", "🪵 Plywood",
-    "🧪 CCA Treatment", "🏭 Suppliers", "🕘 History"
+    "🏭 Suppliers", "🕘 History"
 ])
 
 # ============================================================
@@ -1075,6 +1092,13 @@ with tab_quote:
             )
             locked_total = round(locked_price * item["qty"], 2)
 
+            _cca_on = item.get("cca", False)
+            _cca_badge = (
+                f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;'
+                f'background:#1D9E75;color:white;margin-left:6px">✓ CCA</span>'
+                if _cca_on else ""
+            )
+
             if mixed_rates:
                 st.markdown(
                     f'<div style="background:#FAEEDA;border:0.5px solid #FAC775;'
@@ -1082,7 +1106,7 @@ with tab_quote:
                     f'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
                     f'<div style="min-width:0;flex:1">'
                     f'<div style="font-weight:500;font-size:14px;color:#412402;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
-                    f'{item["species"]} · {item["size"]}</div>'
+                    f'{item["species"]} · {item["size"]}{_cca_badge}</div>'
                     f'<div style="margin-top:3px">'
                     f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;background:#FAC775;color:#412402">@S${locked_rate:,}/ton</span>'
                     f'</div>'
@@ -1100,7 +1124,7 @@ with tab_quote:
                     f'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
                     f'<div style="min-width:0;flex:1">'
                     f'<div style="font-weight:500;font-size:14px;color:var(--color-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
-                    f'{item["species"]} · {item["size"]}</div>'
+                    f'{item["species"]} · {item["size"]}{_cca_badge}</div>'
                     f'<div style="margin-top:3px">'
                     f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;'
                     f'background:var(--color-background-secondary);color:var(--color-text-secondary);'
@@ -1111,8 +1135,20 @@ with tab_quote:
                     f'</div></div></div>',
                     unsafe_allow_html=True
                 )
-            ic1, ic2 = st.columns([11, 1])
+            ic1, ic2, ic3 = st.columns([9, 1, 1])
             with ic2:
+                _cca_on = item.get("cca", False)
+                _pill_style = (
+                    "background:#1D9E75;color:white;border:1.5px solid #1D9E75;"
+                    if _cca_on else
+                    "background:transparent;color:#888;border:1.5px solid #ccc;"
+                )
+                if st.button("CCA", key=f"cca_qb_{i}",
+                             help="Toggle CCA anti-termite / insect borer treatment"):
+                    st.session_state.order_items[i]["cca"] = not _cca_on
+                    st.session_state.q_ready = False
+                    st.rerun()
+            with ic3:
                 if st.button("🗑️", key=f"dt_{i}"):
                     st.session_state.order_items.pop(i)
                     st.session_state.q_ready = False
@@ -1131,6 +1167,7 @@ with tab_quote:
 
         if gen_quote:
             log_items = []; customer_reply = []; grand_total = 0; cost_total = 0
+            _has_cca = False
             for item in st.session_state.order_items:
                 locked_rate = item["rate"]
                 locked_raw, _, locked_price = calc_from_mm(
@@ -1157,8 +1194,23 @@ with tab_quote:
                 customer_reply.append(
                     f"{item['species']} timber\n{item['size']} @ S${locked_price}/pcs x {item['qty']} = S${gt:,.2f}"
                 )
+                # CCA line immediately after parent item
+                if item.get("cca"):
+                    _has_cca = True
+                    _cca_total = round(cca_rate * item["qty"], 2)
+                    _nom_w = item.get("nom_w", mm_to_nominal_inch(item["w_mm"]))
+                    _nom_h = item.get("nom_h", mm_to_nominal_inch(item["h_mm"]))
+                    _inch_lbl = f'{_nom_w}" x {_nom_h}"'
+                    _m_lbl = ft_to_m_display(item["ft"])
+                    _cca_dim = f'{item["w_mm"]} x {item["h_mm"]}mm ({_inch_lbl}) x {item["ft"]}ft ({_m_lbl}m)'
+                    customer_reply.append(
+                        f"{item['species']} timber planed with anti-termite / insect borer treatment ({cca_colour})\n\n"
+                        f"{_cca_dim} @ S${cca_rate:.2f}/pc x {item['qty']} pcs = S${_cca_total:,.2f}"
+                    )
+                    grand_total += _cca_total
             grand_total = round(grand_total, 2); cost_total = round(cost_total, 2)
-            reply_text = build_reply(customer_reply, grand_total, is_timber=True, is_plywood=False)
+            _cca_note = "\n\nNote: After treatment, timber/plywood may be wet and may have some powder when dried." if _has_cca else ""
+            reply_text = build_reply(customer_reply, grand_total, is_timber=True, is_plywood=False, extra_note=_cca_note)
             st.session_state.q_ready = True; st.session_state.q_reply  = reply_text
             st.session_state.q_total = grand_total; st.session_state.q_cost   = cost_total
             st.session_state.q_nitem = len(customer_reply); st.session_state.q_log = log_items
@@ -1551,7 +1603,13 @@ with tab_odd:
         for i, item in enumerate(st.session_state.odd_items):
             _mixed = len(_odd_sp_rates.get(item["species"], set())) > 1
             _pcs_floor = item.get("pcs_floor", math.floor(float(item["pcs_per_ton"])))
-            _ca, _cb, _cc = st.columns([8, 1, 1])
+            _odd_cca_on = item.get("cca", False)
+            _odd_cca_badge = (
+                f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;'
+                f'background:#1D9E75;color:white;margin-left:6px">✓ CCA</span>'
+                if _odd_cca_on else ""
+            )
+            _ca, _cb, _cc, _cd = st.columns([7, 1, 1, 1])
             with _ca:
                 if _mixed:
                     st.markdown(
@@ -1561,12 +1619,13 @@ with tab_odd:
                         f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;background:#FAC775;'
                         f'color:#412402;border:0.5px solid #EF9F27;margin-left:4px">@S${item["rate"]:,}/ton ⚠</span>'
                         f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;background:#FAC775;'
-                        f'color:#412402;border:0.5px solid #EF9F27;margin-left:4px">{item.get("dim_type","Sawn").lower()}</span></div>'
+                        f'color:#412402;border:0.5px solid #EF9F27;margin-left:4px">{item.get("dim_type","Sawn").lower()}</span>'
+                        f'{_odd_cca_badge}</div>'
                         f'<div style="font-size:12px;color:#854F0B;margin-top:2px">'
                         f'Customer: {item["cust_size"]} → Priced as: {item["quote_size"]}</div>'
                         f'<div style="font-size:13px;color:#633806;margin-top:4px">'
                         f'S${item["price"]}/pc × {item["qty"]} pcs = <b style="color:#412402">S${item["line_total"]:,.2f}</b></div>'
-                        f'<div style="⚠ Different rate from other {item["species"]} items in this quote;font-size:11px;color:#854F0B;margin-top:3px">⚠ Different rate from other {item["species"]} items in this quote</div>'
+                        f'<div style="font-size:11px;color:#854F0B;margin-top:3px">⚠ Different rate from other {item["species"]} items in this quote</div>'
                         f'<div style="border-top:0.5px solid #EF9F27;margin-top:7px;padding-top:6px;font-size:12px;color:#854F0B">'
                         f'{_pcs_floor} pcs/ton</div>'
                         f'</div>',
@@ -1582,7 +1641,8 @@ with tab_odd:
                         f'border:0.5px solid var(--color-border-tertiary);margin-left:4px">@S${item["rate"]:,}/ton</span>'
                         f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;'
                         f'background:var(--color-background-secondary);color:var(--color-text-secondary);'
-                        f'border:0.5px solid var(--color-border-tertiary);margin-left:4px">{item.get("dim_type","Sawn").lower()}</span></div>'
+                        f'border:0.5px solid var(--color-border-tertiary);margin-left:4px">{item.get("dim_type","Sawn").lower()}</span>'
+                        f'{_odd_cca_badge}</div>'
                         f'<div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">'
                         f'Customer: {item["cust_size"]} → Priced as: {item["quote_size"]}</div>'
                         f'<div style="font-size:13px;color:var(--color-text-secondary);margin-top:4px">'
@@ -1594,6 +1654,14 @@ with tab_odd:
                         unsafe_allow_html=True
                     )
             with _cb:
+                st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+                if st.button("CCA", key=f"cca_odd_{i}",
+                             help="Toggle CCA anti-termite / insect borer treatment",
+                             use_container_width=True):
+                    st.session_state.odd_items[i]["cca"] = not _odd_cca_on
+                    st.session_state.odd_ready = False
+                    st.rerun()
+            with _cc:
                 st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
                 if st.button("↺", key=f"eo_{i}", help="Re-enter dimensions — restores this item to Step 1. Other items stay in the list.", use_container_width=True):
                     _it = st.session_state.odd_items.pop(i)
@@ -1607,7 +1675,7 @@ with tab_odd:
                     st.session_state["odd_ready"]    = False
                     st.session_state["qf_fill_key"] += 1
                     st.rerun()
-            with _cc:
+            with _cd:
                 st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
                 if st.button("🗑️", key=f"do_{i}", use_container_width=True):
                     st.session_state.odd_items.pop(i); st.session_state.odd_ready=False; st.rerun()
@@ -1664,13 +1732,11 @@ with tab_odd:
             for item in st.session_state.odd_items:
                 _dt = item.get("dim_type", "Sawn")
                 _groups[(item["species"], _dt)].append(item)
-            # Sort: sawn first, then planed; within same type sort by species
             _group_order = sorted(_groups.keys(), key=lambda k: (0 if k[1]=="Sawn" else 1, k[0]))
-            odd_reply = []
+            odd_reply = []; _odd_has_cca = False
             for _gi, _gkey in enumerate(_group_order):
                 _sp, _dt = _gkey
                 _items = _groups[_gkey]
-                # Blank line before each group except the first
                 if _gi > 0:
                     odd_reply.append("")
                 odd_reply.append(f"{_sp} timber {_dt.lower()}")
@@ -1679,7 +1745,16 @@ with tab_odd:
                         f"{_it['quote_size']}\n"
                         f"@ S${_it['price']}/pcs x {_it['qty']} = S${_it['line_total']:,.2f}"
                     )
-            reply_text=build_reply(odd_reply,odd_total,is_timber=True,is_plywood=False)
+                    if _it.get("cca"):
+                        _odd_has_cca = True
+                        _cca_total_odd = round(cca_rate * _it["qty"], 2)
+                        odd_total += _cca_total_odd
+                        odd_reply.append(
+                            f"{_sp} timber {_dt.lower()} with anti-termite / insect borer treatment ({cca_colour})\n\n"
+                            f"{_it['quote_size']} @ S${cca_rate:.2f}/pc x {_it['qty']} pcs = S${_cca_total_odd:,.2f}"
+                        )
+            _odd_cca_note = "\n\nNote: After treatment, timber/plywood may be wet and may have some powder when dried." if _odd_has_cca else ""
+            reply_text=build_reply(odd_reply,odd_total,is_timber=True,is_plywood=False,extra_note=_odd_cca_note)
             st.session_state.odd_ready=True; st.session_state.odd_reply=reply_text
             st.session_state.odd_total=odd_total; st.session_state.odd_cost=odd_cost
             st.session_state.odd_nitem=len(odd_reply); st.session_state.odd_log=odd_log
@@ -1784,14 +1859,22 @@ with tab_ply:
             st.divider()
             st.markdown("**Items in Order**")
             for i,item in enumerate(st.session_state.ply_items):
-                col_a,col_b,col_c,col_d=st.columns([3,3,1,1])
+                _ply_cca_on = item.get("cca", False)
+                _ply_cca_badge = " ✓ CCA" if _ply_cca_on else ""
+                col_a,col_b,col_c,col_d,col_e=st.columns([3,3,1,1,1])
                 with col_a:
                     moq_badge=" ⚠️ MOQ" if item["moq_flag"] else ""
-                    st.markdown(f"**{item['grade']}** &nbsp; {item['thk']}mm{moq_badge}",unsafe_allow_html=True)
+                    st.markdown(f"**{item['grade']}** &nbsp; {item['thk']}mm{moq_badge}{_ply_cca_badge}",unsafe_allow_html=True)
                 with col_b:
                     st.markdown(f"S\\${item['sell']}/sheet &nbsp;×&nbsp; {item['actual_qty']} sheets &nbsp;=&nbsp; **S\\${item['line_total']:,.2f}**",unsafe_allow_html=True)
                 with col_c: st.caption(f"Profit: S${round(item['profit_ps']*item['actual_qty'],2):,.2f}")
                 with col_d:
+                    if st.button("CCA", key=f"cca_ply_{i}",
+                                 help="Toggle CCA anti-termite / insect borer treatment"):
+                        st.session_state.ply_items[i]["cca"] = not _ply_cca_on
+                        st.session_state.ply_ready = False
+                        st.rerun()
+                with col_e:
                     if st.button("🗑️",key=f"dply_{i}"):
                         st.session_state.ply_items.pop(i); st.session_state.ply_ready=False; st.rerun()
 
@@ -1814,7 +1897,7 @@ with tab_ply:
                     st.session_state.ply_items=[]; st.session_state.ply_ready=False; st.rerun()
 
             if gen_ply:
-                ply_log=[]; ply_reply=[]
+                ply_log=[]; ply_reply=[]; _ply_has_cca=False; _ply_grand_with_cca=ply_grand
                 for item in st.session_state.ply_items:
                     profit_total=round(item["profit_ps"]*item["actual_qty"],2)
                     margin_pct=round((item["profit_ps"]/item["sell"]*100),1) if item["sell"]>0 else 0
@@ -1829,12 +1912,22 @@ with tab_ply:
                     cl_price = item.get('sell_rounded', ceil_10cents(item['sell']))
                     cl=f"{item['grade']} plywood {item['thk']}mm x 1.22m x 2.44m @ S${cl_price:.2f}/sheet x {item['actual_qty']} = S${item['line_total']:,.2f}{moq_note_txt}"
                     ply_reply.append(cl)
+                    if item.get("cca"):
+                        _ply_has_cca = True
+                        _cca_ply_total = round(cca_rate * item["actual_qty"], 2)
+                        _ply_grand_with_cca += _cca_ply_total
+                        ply_reply.append(
+                            f"{item['grade']} plywood with anti-termite / insect borer treatment ({cca_colour})\n\n"
+                            f"{item['thk']}mm x 1.22m x 2.44m @ S${cca_rate:.2f}/pc x {item['actual_qty']} pcs = S${_cca_ply_total:,.2f}"
+                        )
 
                 has_fr=any("Fire Retardant" in x["grade"] for x in st.session_state.ply_items)
                 fr_note="\n* Note (Fire Retardant): Plywood may/will be wet & may/will have some powder when dried." if has_fr else ""
-                reply_txt=build_reply(ply_reply,ply_grand,is_timber=False,is_plywood=True,extra_note=fr_note)
+                _cca_ply_note = ("\n\nNote: After treatment, timber/plywood may be wet and may have some powder when dried." if _ply_has_cca else "")
+                _combined_note = fr_note + _cca_ply_note
+                reply_txt=build_reply(ply_reply,_ply_grand_with_cca,is_timber=False,is_plywood=True,extra_note=_combined_note)
                 st.session_state.ply_ready=True; st.session_state.ply_reply=reply_txt
-                st.session_state.ply_total=ply_grand; st.session_state.ply_cost=ply_cost_total
+                st.session_state.ply_total=_ply_grand_with_cca; st.session_state.ply_cost=ply_cost_total
                 st.session_state.ply_nitem=len(ply_reply); st.session_state.ply_log=ply_log
 
             if st.session_state.ply_ready:
@@ -1867,208 +1960,7 @@ with tab_ply:
         ])
 
 # ============================================================
-# TAB 4 — CCA TREATMENT
-# ============================================================
-with tab_cca:
-    st.subheader("🧪 CCA Treatment Quote")
-    st.caption("Anti-termite / insect borer treatment. Pull items from QB or Plywood, then generate reply.")
-
-    # ── Colour + Rate ─────────────────────────────────────────
-    cc1, cc2 = st.columns([2, 2])
-    with cc1:
-        cca_colour = st.selectbox(
-            "Treatment colour",
-            ["Brown — TimberTone", "Colourless"],
-            index=["Brown — TimberTone", "Colourless"].index(st.session_state.cca_colour),
-            key="cca_colour_sel"
-        )
-        st.session_state.cca_colour = cca_colour
-    with cc2:
-        cca_rate = st.number_input(
-            "CCA rate (S$/pc)", min_value=0.0, value=float(st.session_state.cca_rate),
-            step=0.5, format="%.2f", key="cca_rate_inp"
-        )
-        st.session_state.cca_rate = cca_rate
-
-    st.divider()
-
-    # ── Pull from QB ──────────────────────────────────────────
-    st.markdown("#### Pull items from Quote Builder")
-    if st.session_state.order_items:
-        qb_labels = [
-            f"{it['species']} timber · {it['size']} × {it['qty']} pcs"
-            for it in st.session_state.order_items
-        ]
-        qb_sel = st.multiselect("Select QB timber items to treat:", qb_labels, key="cca_qb_sel")
-        if st.button("+ Add selected QB items", key="cca_pull_qb"):
-            for label in qb_sel:
-                idx = qb_labels.index(label)
-                it  = st.session_state.order_items[idx]
-                # Derive display dims from item: w_mm x h_mm x ft
-                _w = it["w_mm"]; _h = it["h_mm"]; _ft = it["ft"]
-                _nom_w = mm_to_nominal_inch(_w); _nom_h = mm_to_nominal_inch(_h)
-                _inch_lbl = f'{_nom_w}" x {_nom_h}"'
-                _m_lbl    = ft_to_m_display(_ft)
-                # planed dims from label (size field e.g. "95 x 20mm (4" x 1") x 12ft")
-                _dim_str  = f"{_w} x {_h}mm ({_inch_lbl}) x {_ft}ft ({_m_lbl}m)"
-                line_total = round(cca_rate * it["qty"], 2)
-                st.session_state.cca_items.append({
-                    "type":       "timber",
-                    "species":    it["species"],
-                    "dim_type":   "planed",
-                    "dim_str":    _dim_str,
-                    "qty":        it["qty"],
-                    "rate":       cca_rate,
-                    "line_total": line_total,
-                })
-            st.session_state.cca_ready = False
-            st.rerun()
-    else:
-        st.caption("No QB timber items — add items in Quote Builder tab first.")
-
-    st.divider()
-
-    # ── Pull from Plywood ─────────────────────────────────────
-    st.markdown("#### Pull items from Plywood")
-    if st.session_state.ply_items:
-        ply_labels = [
-            f"{it['grade']} {it['thk']}mm × {it['actual_qty']} sheets"
-            for it in st.session_state.ply_items
-        ]
-        ply_sel = st.multiselect("Select plywood items to treat:", ply_labels, key="cca_ply_sel")
-        if st.button("+ Add selected plywood items", key="cca_pull_ply"):
-            for label in ply_sel:
-                idx = ply_labels.index(label)
-                it  = st.session_state.ply_items[idx]
-                _dim_str = f"{it['thk']}mm x 1.22m x 2.44m"
-                line_total = round(cca_rate * it["actual_qty"], 2)
-                st.session_state.cca_items.append({
-                    "type":       "plywood",
-                    "grade":      it["grade"],
-                    "dim_str":    _dim_str,
-                    "qty":        it["actual_qty"],
-                    "rate":       cca_rate,
-                    "line_total": line_total,
-                })
-            st.session_state.cca_ready = False
-            st.rerun()
-    else:
-        st.caption("No plywood items — add items in Plywood tab first.")
-
-    st.divider()
-
-    # ── CCA item list ─────────────────────────────────────────
-    if st.session_state.cca_items:
-        st.markdown("**Items for CCA Treatment**")
-        for i, item in enumerate(st.session_state.cca_items):
-            _lbl = (f"{item['species']} timber {item.get('dim_type','planed')}"
-                    if item["type"] == "timber"
-                    else item["grade"])
-            ca, cb = st.columns([9, 1])
-            with ca:
-                st.markdown(
-                    f'<div style="border:0.5px solid var(--color-border-tertiary);'
-                    f'border-radius:var(--border-radius-md);padding:10px 14px;'
-                    f'background:var(--color-background-primary);margin-bottom:4px">'
-                    f'<div style="font-weight:500;font-size:14px">{_lbl}</div>'
-                    f'<div style="font-size:13px;color:var(--color-text-secondary);margin-top:2px">'
-                    f'{item["dim_str"]}</div>'
-                    f'<div style="font-size:13px;margin-top:4px">'
-                    f'S${item["rate"]:.2f}/pc × {item["qty"]} pcs = '
-                    f'<b>S${item["line_total"]:,.2f}</b></div>'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
-            with cb:
-                st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-                if st.button("🗑️", key=f"dcca_{i}"):
-                    st.session_state.cca_items.pop(i)
-                    st.session_state.cca_ready = False
-                    st.rerun()
-
-        cca_grand = round(sum(x["line_total"] for x in st.session_state.cca_items), 2)
-        st.markdown(
-            f'<div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);'
-            f'padding:10px 14px;margin-bottom:8px;font-size:13px;display:flex;justify-content:space-between">'
-            f'<span style="color:var(--color-text-secondary)">{len(st.session_state.cca_items)} item(s)</span>'
-            f'<b style="color:var(--color-text-primary)">S${cca_grand:,.2f}</b>'
-            f'</div>',
-            unsafe_allow_html=True
-        )
-
-        st.divider()
-        gc1, gc2 = st.columns([2, 1])
-        with gc1: gen_cca = st.button("GENERATE CCA QUOTE", type="primary", use_container_width=True)
-        with gc2:
-            if st.button("Clear CCA List", use_container_width=True):
-                st.session_state.cca_items = []
-                st.session_state.cca_ready = False
-                st.rerun()
-
-        if gen_cca:
-            _colour_lbl = st.session_state.cca_colour
-            _lines = []
-            _has_timber = any(x["type"] == "timber" for x in st.session_state.cca_items)
-            _has_ply    = any(x["type"] == "plywood" for x in st.session_state.cca_items)
-
-            for item in st.session_state.cca_items:
-                if item["type"] == "timber":
-                    _desc = (f"{item['species']} timber {item.get('dim_type','planed')} "
-                             f"with anti-termite / insect borer treatment ({_colour_lbl})")
-                else:
-                    _desc = (f"{item['grade']} plywood "
-                             f"with anti-termite / insect borer treatment ({_colour_lbl})")
-                _price_line = (f"{item['dim_str']} "
-                               f"@ S${item['rate']:.2f}/pc x {item['qty']} pcs = "
-                               f"S${item['line_total']:,.2f}")
-                _lines.append(f"{_desc}\n\n{_price_line}")
-
-            # Join items with blank line between each
-            _body = "\n\n".join(_lines)
-
-            # Build tolerances section
-            _tol_parts = []
-            if _has_timber:
-                _tol_parts.append("- Timber: ±1~2mm / ±25~50mm")
-            if _has_ply:
-                _tol_parts.append("- Plywood thickness: ±0.8~1.2mm")
-            _tol_str = "\n".join(_tol_parts)
-
-            cca_reply = (
-                f"{_body}\n\n"
-                f"Note: After treatment, timber/plywood may be wet and may have some powder when dried.\n\n"
-                f"Tolerances:\n{_tol_str}\n\n"
-                f"Delivery / Self Collection:\n"
-                f"30 Kranji Loop (Blk A) #04-05\n"
-                f"TimMac @ Kranji S739570"
-            )
-
-            st.session_state.cca_ready  = True
-            st.session_state.cca_reply  = cca_reply
-            st.session_state.cca_total  = cca_grand
-            st.session_state.cca_nitem  = len(st.session_state.cca_items)
-
-        if st.session_state.cca_ready:
-            st.divider()
-            st.subheader("Customer Reply (edit before sending)")
-            cca_edited = st.text_area("", st.session_state.cca_reply, height=350, key="cca_reply_out")
-            cx1, cx2 = st.columns(2)
-            with cx1:
-                st.download_button("📥 Download TXT", data=cca_edited,
-                    file_name=f"cca_quote_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                    mime="text/plain", use_container_width=True)
-            with cx2:
-                if st.button("💾 Save to History", type="primary", key="save_cca", use_container_width=True):
-                    ok = save_quote(st.session_state.cust_name, st.session_state.cust_mobile,
-                        st.session_state.cca_total, st.session_state.cca_nitem, cca_edited, 0,
-                        quote_type="CCA Treatment")
-                    if ok: st.success("✅ Saved!")
-                    else:  st.error("❌ Could not save.")
-    else:
-        st.info("Pull items from Quote Builder or Plywood tab above, then generate the CCA quote.")
-
-# ============================================================
-# TAB 5 — SUPPLIERS
+# TAB 4 — SUPPLIERS
 # ============================================================
 with tab_sup:
     st.markdown("""<div class="sup-header">
@@ -2107,7 +1999,7 @@ with tab_sup:
         render_table(margin_rows)
 
 # ============================================================
-# TAB 6 — HISTORY
+# TAB 5 — HISTORY
 # ============================================================
 with tab_hist:
     st.markdown("#### 🕘 Quote History")
