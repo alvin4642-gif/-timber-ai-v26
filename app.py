@@ -744,40 +744,49 @@ def validate_odd_inputs(cthk_mm=None, cwid_mm=None, clen_val=None, clu=None,
 def parse_dimension_string(raw):
     """Parse a free-text dimension string into (thk_mm, wid_mm, len_mm) or None.
 
-    Supported formats (all case-insensitive, mm assumed):
-      200x400x1600          200×400×1600       200 400 1600
-      T200 W400 L1600       L1600 W400 T200    200T x 400W x 1600L
-      200T x 400 x 1600mmL  T200mm W400 L1600mm
+    Supported formats (all case-insensitive):
+      mm:    200x400x1600   200×400×1600   T200 W400 L1600   200T x 400W x 1600L
+      inch:  12"x8"x20"    12inx8inx20in  T12" W8" L20"     12in x 8in x 20in
+    Inch values are converted to mm (*25.4). Length in inch → mm for snap logic.
     Returns dict with keys 't', 'w', 'l' (all floats in mm), or None on failure.
     """
     import re
-    s = raw.strip().upper()
-    s = s.replace("MM", "").replace("×", "x")
+    s = raw.strip()
+
+    # Detect inch mode: contains " or 'in' suffix next to a number
+    _inch_mode = bool(re.search(r'\d\s*["\']', s) or re.search(r'\d\s*in\b', s, re.IGNORECASE))
+
+    # Normalise: replace inch markers, × → x, strip MM/mm
+    s_up = s.upper()
+    s_up = re.sub(r'IN\b', '', s_up)   # remove 'in' suffix
+    s_up = s_up.replace('"', '').replace("'", '')
+    s_up = s_up.replace("MM", "").replace("×", "x")
 
     labeled = {}
-    # Match prefix labels: T200, W400, L1600
     for label, key in [("T", "t"), ("W", "w"), ("L", "l")]:
-        m = re.search(rf'\b{label}(\d+(?:\.\d+)?)', s)
-        if m:
-            labeled[key] = float(m.group(1))
+        m = re.search(rf'\b{label}(\d+(?:\.\d+)?)', s_up)
+        if m: labeled[key] = float(m.group(1))
 
-    # Match suffix labels: 200T, 400W, 1600L
     for label, key in [("T", "t"), ("W", "w"), ("L", "l")]:
         if key not in labeled:
-            m = re.search(rf'(\d+(?:\.\d+)?){label}\b', s)
-            if m:
-                labeled[key] = float(m.group(1))
+            m = re.search(rf'(\d+(?:\.\d+)?){label}\b', s_up)
+            if m: labeled[key] = float(m.group(1))
 
     if len(labeled) == 3:
+        if _inch_mode:
+            labeled = {k: round(v * 25.4, 1) for k, v in labeled.items()}
         return labeled
 
-    # No labels — extract all numbers and sort: smallest=T, middle=W, largest=L
-    nums = [float(n) for n in re.findall(r'\d+(?:\.\d+)?', s)]
+    nums = [float(n) for n in re.findall(r'\d+(?:\.\d+)?', s_up)]
     if len(nums) == 3:
         t, w, l = sorted(nums)
+        if _inch_mode:
+            t, w, l = round(t*25.4,1), round(w*25.4,1), round(l*25.4,1)
         return {"t": t, "w": w, "l": l}
     if len(nums) == 2:
         t, w = sorted(nums)
+        if _inch_mode:
+            t, w = round(t*25.4,1), round(w*25.4,1)
         return {"t": t, "w": w, "l": None}
 
     return None
@@ -1174,7 +1183,10 @@ with tab_quote:
                     item["w_mm"], item["h_mm"], item["ft"], locked_rate,
                     item.get("nom_w"), item.get("nom_h")
                 )
-                gt = round(locked_price * item["qty"], 2)
+                _item_cca = item.get("cca", False)
+                # Combined price = timber price/pc + CCA rate/pc (if CCA on)
+                _combined_price = ceil_10cents(locked_price + cca_rate) if _item_cca else locked_price
+                gt = round(_combined_price * item["qty"], 2)
                 grand_total += gt
                 cost_est = round(gt * 0.85, 2); cost_total += cost_est
                 profit = round(gt - cost_est, 2)
@@ -1184,30 +1196,23 @@ with tab_quote:
                     "rows": {
                         "Rate":            f"S${locked_rate:,}/ton",
                         "Pieces per ton":  str(round(locked_raw, 2)),
-                        "Price per piece": f"S${locked_price}",
+                        "Price per piece": f"S${locked_price}" + (f" + S${cca_rate:.2f} CCA = S${_combined_price}" if _item_cca else ""),
                         "Qty":             f"{item['qty']} pcs",
                         "Line total":      f"S${gt:,.2f}",
                     },
                     "profit_line": f"S${profit:,.2f}", "margin_pct": f"{margin_pct}%",
                     "small_qty": item["small_qty"]
                 })
-                customer_reply.append(
-                    f"{item['species']} timber\n{item['size']} @ S${locked_price}/pcs x {item['qty']} = S${gt:,.2f}"
-                )
-                # CCA line immediately after parent item
-                if item.get("cca"):
+                if _item_cca:
                     _has_cca = True
-                    _cca_total = round(cca_rate * item["qty"], 2)
-                    _nom_w = item.get("nom_w", mm_to_nominal_inch(item["w_mm"]))
-                    _nom_h = item.get("nom_h", mm_to_nominal_inch(item["h_mm"]))
-                    _inch_lbl = f'{_nom_w}" x {_nom_h}"'
-                    _m_lbl = ft_to_m_display(item["ft"])
-                    _cca_dim = f'{item["w_mm"]} x {item["h_mm"]}mm ({_inch_lbl}) x {item["ft"]}ft ({_m_lbl}m)'
                     customer_reply.append(
-                        f"{item['species']} timber planed with anti-termite / insect borer treatment ({cca_colour})\n\n"
-                        f"{_cca_dim} @ S${cca_rate:.2f}/pc x {item['qty']} pcs = S${_cca_total:,.2f}"
+                        f"{item['species']} timber planed treated with anti-termite / insect borer treatment ({cca_colour})\n"
+                        f"{item['size']} @ S${_combined_price}/pcs x {item['qty']} = S${gt:,.2f}"
                     )
-                    grand_total += _cca_total
+                else:
+                    customer_reply.append(
+                        f"{item['species']} timber\n{item['size']} @ S${locked_price}/pcs x {item['qty']} = S${gt:,.2f}"
+                    )
             grand_total = round(grand_total, 2); cost_total = round(cost_total, 2)
             _cca_note = "\n\nNote: After treatment, timber/plywood may be wet and may have some powder when dried." if _has_cca else ""
             reply_text = build_reply(customer_reply, grand_total, is_timber=True, is_plywood=False, extra_note=_cca_note)
@@ -1411,7 +1416,7 @@ with tab_odd:
     with s1b:
         st.markdown("<div style='font-size:11px;color:var(--color-text-secondary);margin-bottom:4px'>Paste or type customer dimensions</div>", unsafe_allow_html=True)
         p1, p2, p3, p4, p5, p6, p7 = st.columns([3.5, 0.7, 0.6, 1, 1, 1, 0.6])
-        with p1: st.text_input("Paste", placeholder="e.g. 200×400×1600 or T200 W400 L1600", label_visibility="collapsed", key="odd_quickfill_inp")
+        with p1: st.text_input("Paste", placeholder='e.g. 200×400×1600 or 8"x4"x20" or T200 W400 L1600', label_visibility="collapsed", key="odd_quickfill_inp")
         with p2:
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
             qf_btn = st.button("Fill ↓", use_container_width=True, key="odd_qf_btn")
@@ -1739,19 +1744,24 @@ with tab_odd:
                 _items = _groups[_gkey]
                 if _gi > 0:
                     odd_reply.append("")
-                odd_reply.append(f"{_sp} timber {_dt.lower()}")
+                # Print group header only if at least one non-CCA item in group
+                _non_cca_items = [_it for _it in _items if not _it.get("cca")]
+                if _non_cca_items:
+                    odd_reply.append(f"{_sp} timber {_dt.lower()}")
                 for _it in _items:
-                    odd_reply.append(
-                        f"{_it['quote_size']}\n"
-                        f"@ S${_it['price']}/pcs x {_it['qty']} = S${_it['line_total']:,.2f}"
-                    )
                     if _it.get("cca"):
                         _odd_has_cca = True
-                        _cca_total_odd = round(cca_rate * _it["qty"], 2)
-                        odd_total += _cca_total_odd
+                        _combined_odd = ceil_10cents(_it["price"] + cca_rate)
+                        _cca_line_total = round(_combined_odd * _it["qty"], 2)
+                        odd_total += _cca_line_total - _it["line_total"]
                         odd_reply.append(
-                            f"{_sp} timber {_dt.lower()} with anti-termite / insect borer treatment ({cca_colour})\n\n"
-                            f"{_it['quote_size']} @ S${cca_rate:.2f}/pc x {_it['qty']} pcs = S${_cca_total_odd:,.2f}"
+                            f"{_sp} timber {_dt.lower()} treated with anti-termite / insect borer treatment ({cca_colour})\n"
+                            f"{_it['quote_size']} @ S${_combined_odd}/pcs x {_it['qty']} = S${_cca_line_total:,.2f}"
+                        )
+                    else:
+                        odd_reply.append(
+                            f"{_it['quote_size']}\n"
+                            f"@ S${_it['price']}/pcs x {_it['qty']} = S${_it['line_total']:,.2f}"
                         )
             _odd_cca_note = "\n\nNote: After treatment, timber/plywood may be wet and may have some powder when dried." if _odd_has_cca else ""
             reply_text=build_reply(odd_reply,odd_total,is_timber=True,is_plywood=False,extra_note=_odd_cca_note)
