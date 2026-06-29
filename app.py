@@ -742,51 +742,55 @@ def validate_odd_inputs(cthk_mm=None, cwid_mm=None, clen_val=None, clu=None,
     return errors
 
 def parse_dimension_string(raw):
-    """Parse a free-text dimension string into (thk_mm, wid_mm, len_mm) or None.
+    """Parse a free-text dimension string into (thk_mm, wid_mm, len_mm).
 
-    Supported formats (all case-insensitive):
-      mm:    200x400x1600   200×400×1600   T200 W400 L1600   200T x 400W x 1600L
-      inch:  12"x8"x20"    12inx8inx20in  T12" W8" L20"     12in x 8in x 20in
-    Inch values are converted to mm (*25.4). Length in inch → mm for snap logic.
-    Returns dict with keys 't', 'w', 'l' (all floats in mm), or None on failure.
+    Handles mixed units per token — each number evaluated independently:
+      - suffix 'in', 'IN', or '"'  → value × 25  (trade: 1" = 25mm)
+      - suffix 'mm', 'MM' or none  → value as mm
+    Examples:
+      10inx8inx1600mm  →  t=250, w=200, l=1600
+      10"x8"x20"       →  t=250, w=200, l=500
+      200x400x1600     →  t=200, w=400, l=1600
+    Returns dict with keys 't','w','l' (floats in mm), or None on failure.
     """
     import re
-    s = raw.strip()
 
-    # Detect inch mode: contains " or 'in' suffix next to a number
-    _inch_mode = bool(re.search(r'\d\s*["\']', s) or re.search(r'\d\s*in\b', s, re.IGNORECASE))
+    def _to_mm(val_str, suffix):
+        v = float(val_str)
+        if suffix.upper().replace('"','IN') in ('IN','IN',''):
+            # detect if suffix is inch
+            pass
+        return v
 
-    # Normalise: replace inch markers, × → x, strip MM/mm
-    s_up = s.upper()
-    s_up = re.sub(r'IN\b', '', s_up)   # remove 'in' suffix
-    s_up = s_up.replace('"', '').replace("'", '')
-    s_up = s_up.replace("MM", "").replace("×", "x")
+    # Extract tokens: each token is (number, unit_suffix)
+    # Pattern: optional label (T/W/L), number, optional unit (in/mm/")
+    token_re = re.compile(
+        r'(?:[TWL]\s*)?'          # optional label prefix
+        r'(\d+(?:\.\d+)?)'        # number
+        r'\s*'
+        r'(in|IN|mm|MM|"|\')?',   # optional unit suffix
+        re.IGNORECASE
+    )
 
-    labeled = {}
-    for label, key in [("T", "t"), ("W", "w"), ("L", "l")]:
-        m = re.search(rf'\b{label}(\d+(?:\.\d+)?)', s_up)
-        if m: labeled[key] = float(m.group(1))
+    tokens = []
+    for m in token_re.finditer(raw):
+        num = m.group(1)
+        unit = (m.group(2) or '').strip().upper().replace("'", '"')
+        if not num:
+            continue
+        v = float(num)
+        if unit in ('IN', '"'):
+            v = round(v * 25, 1)   # trade: 1" = 25mm
+        # mm or no suffix → keep as mm
+        tokens.append(v)
 
-    for label, key in [("T", "t"), ("W", "w"), ("L", "l")]:
-        if key not in labeled:
-            m = re.search(rf'(\d+(?:\.\d+)?){label}\b', s_up)
-            if m: labeled[key] = float(m.group(1))
+    tokens = [t for t in tokens if t > 0]
 
-    if len(labeled) == 3:
-        if _inch_mode:
-            labeled = {k: round(v * 25.4, 1) for k, v in labeled.items()}
-        return labeled
-
-    nums = [float(n) for n in re.findall(r'\d+(?:\.\d+)?', s_up)]
-    if len(nums) == 3:
-        t, w, l = sorted(nums)
-        if _inch_mode:
-            t, w, l = round(t*25.4,1), round(w*25.4,1), round(l*25.4,1)
+    if len(tokens) == 3:
+        t, w, l = sorted(tokens)
         return {"t": t, "w": w, "l": l}
-    if len(nums) == 2:
-        t, w = sorted(nums)
-        if _inch_mode:
-            t, w = round(t*25.4,1), round(w*25.4,1)
+    if len(tokens) == 2:
+        t, w = sorted(tokens)
         return {"t": t, "w": w, "l": None}
 
     return None
@@ -844,7 +848,7 @@ def normalize_to_mm(value, unit):
     if u in ["cm","厘米"]:       return float(value) * 10
     if u in ["m","米"]:          return float(value) * 1000
     if u in ["ft","feet","'"]:  return float(value) * 304.8
-    if u in ["in","inch",'"']: return float(value) * 25.4
+    if u in ["in","inch",'"']: return float(value) * 25
     return float(value)
 
 def classify_dim(val_mm):
@@ -1366,8 +1370,8 @@ with tab_odd:
     _has_dims = st.session_state.odd_cthk and st.session_state.odd_cwid
     if _has_dims:
         _ctu = st.session_state.odd_ctu; _cwu = st.session_state.odd_cwu
-        _cthk_mm = float(st.session_state.odd_cthk) * 25.4 if _ctu == "inch" else float(st.session_state.odd_cthk)
-        _cwid_mm = float(st.session_state.odd_cwid)  * 25.4 if _cwu == "inch" else float(st.session_state.odd_cwid)
+        _cthk_mm = float(st.session_state.odd_cthk) * 25 if _ctu == "inch" else float(st.session_state.odd_cthk)
+        _cwid_mm = float(st.session_state.odd_cwid)  * 25 if _cwu == "inch" else float(st.session_state.odd_cwid)
         _cthk_mm, _cwid_mm = sorted([_cthk_mm, _cwid_mm])
         _compare_sawn = st.session_state.get("odd_dim_type", "Sawn") == "Sawn"
         _sug = suggest_quote_size(_cwid_mm, _cthk_mm, compare_sawn=_compare_sawn)
