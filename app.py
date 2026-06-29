@@ -1874,7 +1874,11 @@ with tab_ply:
             st.markdown("**Items in Order**")
             for i,item in enumerate(st.session_state.ply_items):
                 _ply_cca_on = item.get("cca", False)
-                _ply_cca_badge = " ✓ CCA" if _ply_cca_on else ""
+                _ply_cca_badge = (
+                    ' <span style="font-size:11px;padding:1px 8px;border-radius:99px;'
+                    'background:#1D9E75;color:white;margin-left:6px">✓ CCA</span>'
+                    if _ply_cca_on else ""
+                )
                 col_a,col_b,col_c,col_d,col_e=st.columns([3,3,1,1,1])
                 with col_a:
                     moq_badge=" ⚠️ MOQ" if item["moq_flag"] else ""
