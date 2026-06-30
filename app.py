@@ -1952,8 +1952,9 @@ with tab_ply:
             if gen_ply:
                 ply_log=[]; ply_reply=[]; _ply_has_cca=False; _ply_grand_with_cca=ply_grand
                 for item in st.session_state.ply_items:
+                    _sell_r = item.get("sell_rounded", ceil_10cents(item["sell"]))
                     profit_total=round(item["profit_ps"]*item["actual_qty"],2)
-                    margin_pct=round((item["profit_ps"]/item["sell"]*100),1) if item["sell"]>0 else 0
+                    margin_pct=round((item["profit_ps"]/_sell_r*100),1) if _sell_r>0 else 0
                     moq_note_txt=f"\n(MOQ {item['actual_qty']} sheets applied)" if item["moq_flag"] else ""
                     _ply_item_cca = item.get("cca", False)
                     _ply_cca_badge_html = (
@@ -1961,30 +1962,32 @@ with tab_ply:
                         'background:#1D9E75;color:white;margin-left:6px">🧪 CCA</span>'
                         if _ply_item_cca else ""
                     )
-                    _ply_log_rows = {"Cost (YC)":f"S${item['cost']}/sheet","Selling":f"S${item['sell']}/sheet"}
+                    _ply_log_rows = {"Cost (YC)":f"S${item['cost']}/sheet","Selling (plywood)":f"S${_sell_r:.2f}/sheet (rounded up to nearest 10 cents)"}
                     if _ply_item_cca:
-                        _cca_ply_total_log = round(cca_rate * item["actual_qty"], 2)
-                        _ply_log_rows["CCA rate/pc"] = f"S${cca_rate:.2f} ({cca_colour})"
-                        _ply_log_rows["CCA total"]   = f"S${_cca_ply_total_log:,.2f}"
+                        _combined_ply = ceil_10cents(_sell_r + cca_rate)
+                        _ply_line_total = round(_combined_ply * item["actual_qty"], 2)
+                        _ply_log_rows["CCA rate/sheet"]       = f"+ S${cca_rate:.2f} ({cca_colour})"
+                        _ply_log_rows["Combined price/sheet"] = f"S${_combined_ply:.2f}"
+                    else:
+                        _ply_line_total = round(_sell_r * item["actual_qty"], 2)
                     _ply_log_rows["Qty"]        = f"{item['actual_qty']} sheets"
-                    _ply_log_rows["Line total"] = f"S${item['line_total']:,.2f}" + (f" + CCA" if _ply_item_cca else "")
+                    _ply_log_rows["Line total"] = f"S${_ply_line_total:,.2f}"
                     ply_log.append({
                         "heading":f"{item['grade']} {item['thk']}mm{_ply_cca_badge_html}",
                         "rows":_ply_log_rows,
                         "profit_line":f"S${profit_total:,.2f}","margin_pct":f"{margin_pct}%","small_qty":False,
                         "moq_flag":item["moq_flag"],"moq_note":f"min {item['actual_qty']} sheets (requested {item['qty']})"
                     })
-                    cl_price = item.get('sell_rounded', ceil_10cents(item['sell']))
-                    cl=f"{item['grade']} plywood {item['thk']}mm x 1.22m x 2.44m @ S${cl_price:.2f}/sheet x {item['actual_qty']} = S${item['line_total']:,.2f}{moq_note_txt}"
-                    ply_reply.append(cl)
                     if _ply_item_cca:
                         _ply_has_cca = True
-                        _cca_ply_total = round(cca_rate * item["actual_qty"], 2)
-                        _ply_grand_with_cca += _cca_ply_total
+                        _ply_grand_with_cca += (_ply_line_total - item["line_total"])
                         ply_reply.append(
-                            f"{item['grade']} plywood with anti-termite / insect borer treatment ({cca_colour})\n\n"
-                            f"{item['thk']}mm x 1.22m x 2.44m @ S${cca_rate:.2f}/pc x {item['actual_qty']} pcs = S${_cca_ply_total:,.2f}"
+                            f"{item['grade']} plywood with anti-termite / insect borer treatment ({cca_colour})\n"
+                            f"{item['thk']}mm x 1.22m x 2.44m @ S${_combined_ply:.2f}/sheet x {item['actual_qty']} = S${_ply_line_total:,.2f}{moq_note_txt}"
                         )
+                    else:
+                        cl=f"{item['grade']} plywood {item['thk']}mm x 1.22m x 2.44m @ S${_sell_r:.2f}/sheet x {item['actual_qty']} = S${_ply_line_total:,.2f}{moq_note_txt}"
+                        ply_reply.append(cl)
 
                 has_fr=any("Fire Retardant" in x["grade"] for x in st.session_state.ply_items)
                 fr_note="\n* Note (Fire Retardant): Plywood may/will be wet & may/will have some powder when dried." if has_fr else ""
