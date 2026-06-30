@@ -528,6 +528,8 @@ st.markdown("""
 
 # Default rate values — used as value= args in number_input widgets
 DEFAULT_RATES = {"Kapur": 3800, "Balau": 5500, "Chengal": 6000, "Mixed Keruing": 650, "Pure Keruing": 1000}
+DEFAULT_CCA_COLOUR = "Brown — TimberTone"
+DEFAULT_CCA_RATE   = 5.0
 
 # ============================================================
 # RATE INPUTS
@@ -544,7 +546,9 @@ with rc6:
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("↩ Reset Rates", use_container_width=True, key="reset_rates_btn"):
         st.session_state.rate_reset_key += 1  # new key suffix → widgets re-instantiate at value= defaults
-        st.toast("✅ Rates reset to defaults", icon="↩")
+        st.session_state.cca_colour = DEFAULT_CCA_COLOUR
+        st.session_state.cca_rate = DEFAULT_CCA_RATE
+        st.toast("✅ Rates reset to defaults (incl. CCA)", icon="↩")
         st.rerun()
 
 species_rate = {
@@ -1326,6 +1330,9 @@ with tab_odd:
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
         if st.button("↩ Reset rates", use_container_width=True, key="odd_reset_rates"):
             st.session_state.rate_reset_key += 1
+            st.session_state.cca_colour = DEFAULT_CCA_COLOUR
+            st.session_state.cca_rate = DEFAULT_CCA_RATE
+            st.toast("✅ Rates reset to defaults (incl. CCA)", icon="↩")
             st.rerun()
     with r0c4:
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
