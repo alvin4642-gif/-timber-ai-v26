@@ -1195,12 +1195,25 @@ with tab_quote:
                 cost_est = round(gt * 0.85, 2); cost_total += cost_est
                 profit = round(gt - cost_est, 2)
                 margin_pct = round((profit / gt * 100), 1) if gt > 0 else 0
+                _cca_badge_html = (
+                    ' <span style="font-size:11px;padding:1px 8px;border-radius:99px;'
+                    'background:#1D9E75;color:white;margin-left:6px">🧪 CCA</span>'
+                    if _item_cca else ""
+                )
+                _price_rows = (
+                    {
+                        "Timber price/pc":   f"S${locked_price}",
+                        "CCA rate/pc":       f"+ S${cca_rate:.2f} ({cca_colour})",
+                        "Combined price/pc": f"S${_combined_price}",
+                    } if _item_cca else
+                    {"Price per piece": f"S${locked_price}"}
+                )
                 log_items.append({
-                    "heading": f"{item['species']} timber · {item['size']}",
+                    "heading": f"{item['species']} timber · {item['size']}{_cca_badge_html}",
                     "rows": {
                         "Rate":            f"S${locked_rate:,}/ton",
                         "Pieces per ton":  str(round(locked_raw, 2)),
-                        "Price per piece": f"S${locked_price}" + (f" + S${cca_rate:.2f} CCA = S${_combined_price}" if _item_cca else ""),
+                        **_price_rows,
                         "Qty":             f"{item['qty']} pcs",
                         "Line total":      f"S${gt:,.2f}",
                     },
@@ -1715,21 +1728,37 @@ with tab_odd:
         if gen_odd:
             odd_log=[]; odd_total=0; odd_cost=0
             for item in st.session_state.odd_items:
-                odd_total+=item["line_total"]
-                cost_est=round(item["line_total"]*0.85,2); odd_cost+=cost_est
-                profit=round(item["line_total"]-cost_est,2)
-                margin_pct=round((profit/item["line_total"]*100),1) if item["line_total"]>0 else 0
+                _odd_item_cca = item.get("cca", False)
+                _odd_combined_price = ceil_10cents(item["price"] + cca_rate) if _odd_item_cca else item["price"]
+                _odd_line_total = round(_odd_combined_price * item["qty"], 2)
+                odd_total+=_odd_line_total
+                cost_est=round(_odd_line_total*0.85,2); odd_cost+=cost_est
+                profit=round(_odd_line_total-cost_est,2)
+                margin_pct=round((profit/_odd_line_total*100),1) if _odd_line_total>0 else 0
+                _odd_cca_badge_html = (
+                    ' <span style="font-size:11px;padding:1px 8px;border-radius:99px;'
+                    'background:#1D9E75;color:white;margin-left:6px">🧪 CCA</span>'
+                    if _odd_item_cca else ""
+                )
+                _odd_price_rows = (
+                    {
+                        "Timber price/pc":   f"S${item['price']}",
+                        "CCA rate/pc":       f"+ S${cca_rate:.2f} ({cca_colour})",
+                        "Combined price/pc": f"S${_odd_combined_price}",
+                    } if _odd_item_cca else
+                    {"Price per piece": f"S${item['price']} (rounded up to nearest 10 cents)"}
+                )
                 odd_log.append({
-                    "heading":f"{item['species']} (odd size)",
+                    "heading":f"{item['species']} (odd size){_odd_cca_badge_html}",
                     "rows":{
                         "Customer size":    item['cust_size'],
                         "Priced as":        item['quote_size'],
                         "Rate":             f"S${item['rate']}/ton",
                         "Pcs/ton (raw)":    str(item['pcs_per_ton']),
                         "Pcs used (floor)": str(item.get('pcs_floor',math.floor(float(item['pcs_per_ton'])))),
-                        "Price per piece":  f"S${item['price']} (rounded up to nearest 10 cents)",
+                        **_odd_price_rows,
                         "Qty":              f"{item['qty']} pcs",
-                        "Line total":       f"S${item['line_total']:,.2f}",
+                        "Line total":       f"S${_odd_line_total:,.2f}",
                     },
                     "profit_line":f"S${profit:,.2f}","margin_pct":f"{margin_pct}%","small_qty":item["small_qty"]
                 })
@@ -1757,7 +1786,6 @@ with tab_odd:
                         _odd_has_cca = True
                         _combined_odd = ceil_10cents(_it["price"] + cca_rate)
                         _cca_line_total = round(_combined_odd * _it["qty"], 2)
-                        odd_total += _cca_line_total - _it["line_total"]
                         odd_reply.append(
                             f"{_sp} timber {_dt.lower()} treated with anti-termite / insect borer treatment ({cca_colour})\n"
                             f"{_it['quote_size']} @ S${_combined_odd}/pcs x {_it['qty']} = S${_cca_line_total:,.2f}"
@@ -1920,17 +1948,29 @@ with tab_ply:
                     profit_total=round(item["profit_ps"]*item["actual_qty"],2)
                     margin_pct=round((item["profit_ps"]/item["sell"]*100),1) if item["sell"]>0 else 0
                     moq_note_txt=f"\n(MOQ {item['actual_qty']} sheets applied)" if item["moq_flag"] else ""
+                    _ply_item_cca = item.get("cca", False)
+                    _ply_cca_badge_html = (
+                        ' <span style="font-size:11px;padding:1px 8px;border-radius:99px;'
+                        'background:#1D9E75;color:white;margin-left:6px">🧪 CCA</span>'
+                        if _ply_item_cca else ""
+                    )
+                    _ply_log_rows = {"Cost (YC)":f"S${item['cost']}/sheet","Selling":f"S${item['sell']}/sheet"}
+                    if _ply_item_cca:
+                        _cca_ply_total_log = round(cca_rate * item["actual_qty"], 2)
+                        _ply_log_rows["CCA rate/pc"] = f"S${cca_rate:.2f} ({cca_colour})"
+                        _ply_log_rows["CCA total"]   = f"S${_cca_ply_total_log:,.2f}"
+                    _ply_log_rows["Qty"]        = f"{item['actual_qty']} sheets"
+                    _ply_log_rows["Line total"] = f"S${item['line_total']:,.2f}" + (f" + CCA" if _ply_item_cca else "")
                     ply_log.append({
-                        "heading":f"{item['grade']} {item['thk']}mm",
-                        "rows":{"Cost (YC)":f"S${item['cost']}/sheet","Selling":f"S${item['sell']}/sheet",
-                            "Qty":f"{item['actual_qty']} sheets","Line total":f"S${item['line_total']:,.2f}"},
+                        "heading":f"{item['grade']} {item['thk']}mm{_ply_cca_badge_html}",
+                        "rows":_ply_log_rows,
                         "profit_line":f"S${profit_total:,.2f}","margin_pct":f"{margin_pct}%","small_qty":False,
                         "moq_flag":item["moq_flag"],"moq_note":f"min {item['actual_qty']} sheets (requested {item['qty']})"
                     })
                     cl_price = item.get('sell_rounded', ceil_10cents(item['sell']))
                     cl=f"{item['grade']} plywood {item['thk']}mm x 1.22m x 2.44m @ S${cl_price:.2f}/sheet x {item['actual_qty']} = S${item['line_total']:,.2f}{moq_note_txt}"
                     ply_reply.append(cl)
-                    if item.get("cca"):
+                    if _ply_item_cca:
                         _ply_has_cca = True
                         _cca_ply_total = round(cca_rate * item["actual_qty"], 2)
                         _ply_grand_with_cca += _cca_ply_total
