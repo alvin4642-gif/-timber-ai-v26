@@ -496,6 +496,7 @@ _defaults = {
     "q_ready":   False, "q_reply":   "", "q_total":   0.0, "q_cost":   0.0, "q_nitem": 0, "q_log":   [],
     "odd_ready": False, "odd_reply": "", "odd_total": 0.0, "odd_cost": 0.0, "odd_nitem":0, "odd_log": [],
     "ply_ready": False, "ply_reply": "", "ply_total": 0.0, "ply_cost": 0.0, "ply_nitem":0, "ply_log": [],
+    "comb_ready": False, "comb_reply": "", "comb_total": 0.0, "comb_cost": 0.0, "comb_nitem": 0, "comb_log": [],
     "hist_search_val": "",
     "rate_reset_key": 0,
 }
@@ -1126,8 +1127,8 @@ def render_quote_output(prefix, extra_clear_keys=None, save_type=None,
 # AI Parser and Plywood Cut-to-Size removed — built as separate apps
 # ============================================================
 
-tab_quote, tab_odd, tab_ply, tab_sup, tab_hist = st.tabs([
-    "📋 Quote Builder", "📐 Odd Size", "🪵 Plywood",
+tab_quote, tab_odd, tab_ply, tab_combined, tab_sup, tab_hist = st.tabs([
+    "📋 Quote Builder", "📐 Odd Size", "🪵 Plywood", "🔀 Combined",
     "🏭 Suppliers", "🕘 History"
 ])
 
@@ -1998,6 +1999,147 @@ with tab_ply:
             {"Grade":"Marine BS1088",        "Nominal":"9mm","Actual":"+-8.5mm","Supplier":"Ying Chuan","Notes":"BS1088 certified"},
             {"Grade":"Fire Retardant BS476", "Nominal":"3mm","Actual":"+-2.8mm","Supplier":"Ying Chuan","Notes":"BS476 Part 7 Class 1"},
         ])
+
+# ============================================================
+# TAB 3.5 — COMBINED (Timber + Plywood in one reply)
+# ============================================================
+with tab_combined:
+    st.markdown("#### Combine current Timber + Plywood items into one reply")
+    st.caption("Pulls whatever is currently sitting in the Quote Builder and Plywood tabs. "
+               "Nothing is removed from those tabs by generating here.")
+
+    n_timber = len(st.session_state.order_items)
+    n_ply = len(st.session_state.ply_items)
+
+    cc1, cc2 = st.columns(2)
+    with cc1: st.metric("Timber items (Quote Builder)", n_timber)
+    with cc2: st.metric("Plywood items", n_ply)
+
+    if n_timber == 0 and n_ply == 0:
+        st.info("Add items in the Quote Builder and/or Plywood tab first, then come back here to combine them.")
+    else:
+        if st.button("GENERATE COMBINED QUOTE", type="primary", use_container_width=True):
+            combined_log = []; combined_reply = []
+            combined_total = 0; combined_cost = 0
+            has_cca = False
+
+            # ---- Timber section (same math as Quote Builder tab) ----
+            if st.session_state.order_items:
+                for item in st.session_state.order_items:
+                    locked_rate = item["rate"]
+                    locked_raw, _, locked_price = calc_from_mm(
+                        item["w_mm"], item["h_mm"], item["ft"], locked_rate,
+                        item.get("nom_w"), item.get("nom_h")
+                    )
+                    _item_cca = item.get("cca", False)
+                    _combined_price = ceil_10cents(locked_price + cca_rate) if _item_cca else locked_price
+                    gt = round(_combined_price * item["qty"], 2)
+                    combined_total += gt
+                    cost_est = round(gt * 0.85, 2); combined_cost += cost_est
+                    profit = round(gt - cost_est, 2)
+                    margin_pct = round((profit / gt * 100), 1) if gt > 0 else 0
+                    _cca_badge_html = (
+                        ' <span style="font-size:11px;padding:1px 8px;border-radius:99px;'
+                        'background:#1D9E75;color:white;margin-left:6px">🧪 CCA</span>'
+                        if _item_cca else ""
+                    )
+                    _price_rows = (
+                        {
+                            "Timber price/pc":   f"S${locked_price}",
+                            "CCA rate/pc":       f"+ S${cca_rate:.2f} ({cca_colour})",
+                            "Combined price/pc": f"S${_combined_price}",
+                        } if _item_cca else
+                        {"Price per piece": f"S${locked_price}"}
+                    )
+                    combined_log.append({
+                        "heading": f"{item['species']} timber · {item['size']}{_cca_badge_html}",
+                        "rows": {
+                            "Rate":            f"S${locked_rate:,}/ton",
+                            "Pieces per ton":  str(round(locked_raw, 2)),
+                            **_price_rows,
+                            "Qty":             f"{item['qty']} pcs",
+                            "Line total":      f"S${gt:,.2f}",
+                        },
+                        "profit_line": f"S${profit:,.2f}", "margin_pct": f"{margin_pct}%",
+                        "small_qty": item["small_qty"]
+                    })
+                    if _item_cca:
+                        has_cca = True
+                        combined_reply.append(
+                            f"{item['species']} timber planed treated with anti-termite / insect borer treatment ({cca_colour})\n"
+                            f"{item['size']} @ S${_combined_price}/pcs x {item['qty']} = S${gt:,.2f}"
+                        )
+                    else:
+                        combined_reply.append(
+                            f"{item['species']} timber\n{item['size']} @ S${locked_price}/pcs x {item['qty']} = S${gt:,.2f}"
+                        )
+
+            # ---- Divider between sections (only if both present) ----
+            if st.session_state.order_items and st.session_state.ply_items:
+                combined_reply.append("-" * 32)
+
+            # ---- Plywood section (same math as Plywood tab) ----
+            has_fr = False
+            if st.session_state.ply_items:
+                for item in st.session_state.ply_items:
+                    _sell_r = item.get("sell_rounded", ceil_10cents(item["sell"]))
+                    profit_total = round(item["profit_ps"] * item["actual_qty"], 2)
+                    margin_pct = round((item["profit_ps"] / _sell_r * 100), 1) if _sell_r > 0 else 0
+                    moq_note_txt = f"\n(MOQ {item['actual_qty']} sheets applied)" if item["moq_flag"] else ""
+                    _ply_item_cca = item.get("cca", False)
+                    _ply_cca_badge_html = (
+                        ' <span style="font-size:11px;padding:1px 8px;border-radius:99px;'
+                        'background:#1D9E75;color:white;margin-left:6px">🧪 CCA</span>'
+                        if _ply_item_cca else ""
+                    )
+                    _ply_log_rows = {"Cost (YC)": f"S${item['cost']}/sheet",
+                                      "Selling (plywood)": f"S${_sell_r:.2f}/sheet (rounded up to nearest 10 cents)"}
+                    if _ply_item_cca:
+                        has_cca = True
+                        _combined_ply = ceil_10cents(_sell_r + cca_rate)
+                        _ply_line_total = round(_combined_ply * item["actual_qty"], 2)
+                        _ply_log_rows["CCA rate/sheet"] = f"+ S${cca_rate:.2f} ({cca_colour})"
+                        _ply_log_rows["Combined price/sheet"] = f"S${_combined_ply:.2f}"
+                    else:
+                        _ply_line_total = round(_sell_r * item["actual_qty"], 2)
+                    _ply_log_rows["Qty"] = f"{item['actual_qty']} sheets"
+                    _ply_log_rows["Line total"] = f"S${_ply_line_total:,.2f}"
+                    combined_total += _ply_line_total
+                    combined_cost += item["cost"] * item["actual_qty"]
+                    combined_log.append({
+                        "heading": f"{item['grade']} {item['thk']}mm{_ply_cca_badge_html}",
+                        "rows": _ply_log_rows,
+                        "profit_line": f"S${profit_total:,.2f}", "margin_pct": f"{margin_pct}%", "small_qty": False,
+                        "moq_flag": item["moq_flag"], "moq_note": f"min {item['actual_qty']} sheets (requested {item['qty']})"
+                    })
+                    if "Fire Retardant" in item["grade"]:
+                        has_fr = True
+                    if _ply_item_cca:
+                        combined_reply.append(
+                            f"{item['grade']} plywood with anti-termite / insect borer treatment ({cca_colour})\n"
+                            f"{item['thk']}mm x 1.22m x 2.44m @ S${_combined_ply:.2f}/sheet x {item['actual_qty']} = S${_ply_line_total:,.2f}{moq_note_txt}"
+                        )
+                    else:
+                        combined_reply.append(
+                            f"{item['grade']} plywood {item['thk']}mm x 1.22m x 2.44m @ S${_sell_r:.2f}/sheet x {item['actual_qty']} = S${_ply_line_total:,.2f}{moq_note_txt}"
+                        )
+
+            combined_total = round(combined_total, 2); combined_cost = round(combined_cost, 2)
+            fr_note = "\n* Note (Fire Retardant): Plywood may/will be wet & may/will have some powder when dried." if has_fr else ""
+            cca_note = "\n\nNote: After treatment, timber/plywood may be wet and may have some powder when dried." if has_cca else ""
+            reply_text = build_reply(
+                combined_reply, combined_total,
+                is_timber=bool(st.session_state.order_items),
+                is_plywood=bool(st.session_state.ply_items),
+                extra_note=fr_note + cca_note
+            )
+            st.session_state.comb_ready = True; st.session_state.comb_reply = reply_text
+            st.session_state.comb_total = combined_total; st.session_state.comb_cost = combined_cost
+            st.session_state.comb_nitem = len(combined_reply); st.session_state.comb_log = combined_log
+
+        if st.session_state.get("comb_ready"):
+            render_quote_output("comb", save_type=None, show_copy=True, show_clear=True,
+                                 reply_height=350, file_prefix="combined_quote")
 
 # ============================================================
 # TAB 4 — SUPPLIERS
