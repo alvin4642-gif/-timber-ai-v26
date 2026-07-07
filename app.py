@@ -2130,4 +2130,4 @@ with tab_hist:
 # FOOTER
 # ============================================================
 st.markdown("---")
-st.caption("Timber AI Assistant V31  · ALVIN  · ")
+st.caption("Timber AI Assistant V31  · ALVIN  ")
