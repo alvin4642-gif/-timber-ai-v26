@@ -1015,6 +1015,99 @@ def parsed_to_odd_item(p, species_rate_map):
     }
 
 # ============================================================
+# SHARED UI HELPERS (V32) — used by Quote Builder / Odd Size /
+# Plywood tabs to avoid triplicated card/pricing/output code.
+# ============================================================
+
+def cca_badge_html(cca_on):
+    return (
+        '<span style="font-size:11px;padding:1px 8px;border-radius:99px;'
+        'background:#1D9E75;color:white;margin-left:6px">✓ CCA</span>'
+        if cca_on else ""
+    )
+
+def render_item_card(title, pills, detail_line, price_line, warn=False,
+                      warn_note=None, footer_note=None, badge_html=""):
+    if warn:
+        bg, border, text, sub, pill_bg = "#FAEEDA", "#FAC775", "#412402", "#633806", "#FAC775"
+    else:
+        bg, border, text, sub, pill_bg = (
+            "var(--color-background-primary)", "var(--color-border-tertiary)",
+            "var(--color-text-primary)", "var(--color-text-secondary)",
+            "var(--color-background-secondary)"
+        )
+    pill_html = "".join(
+        f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;'
+        f'background:{pill_bg};color:{text if warn else sub};'
+        f'border:0.5px solid {border};margin-left:4px">{p}</span>'
+        for p in pills
+    )
+    detail_html = (
+        f'<div style="font-size:12px;color:{sub};margin-top:2px">{detail_line}</div>'
+        if detail_line else ""
+    )
+    footer_html = (
+        f'<div style="border-top:0.5px solid {border};margin-top:7px;'
+        f'padding-top:6px;font-size:12px;color:{sub}">{footer_note}</div>'
+        if footer_note else ""
+    )
+    warn_html = (
+        f'<div style="font-size:11px;color:#854F0B;margin-top:3px">⚠️ {warn_note}</div>'
+        if (warn and warn_note) else ""
+    )
+    st.markdown(
+        f'<div style="background:{bg};border:0.5px solid {border};'
+        f'border-radius:var(--border-radius-md);padding:10px 14px;margin-bottom:4px">'
+        f'<div style="font-weight:500;font-size:14px;color:{text};white-space:nowrap;'
+        f'overflow:hidden;text-overflow:ellipsis">{title}{pill_html}{badge_html}</div>'
+        f'{detail_html}'
+        f'<div style="font-size:13px;color:{sub};margin-top:4px">{price_line}</div>'
+        f'{warn_html}{footer_html}'
+        f'</div>',
+        unsafe_allow_html=True
+    )
+
+def render_quote_output(prefix, extra_clear_keys=None, save_type=None):
+    """Renders metrics + staff log + reply textarea + action buttons.
+    save_type=None disables the Save to History button (used by Combined tab later)."""
+    ss = st.session_state
+    grand_total = ss[f"{prefix}_total"]; cost_total = ss[f"{prefix}_cost"]
+    st.subheader("Quote Summary")
+    m1, m2, m3, m4 = st.columns(4)
+    with m1: st.metric("Items", ss[f"{prefix}_nitem"])
+    with m2: st.metric("Grand Total", f"S${grand_total:,.2f}")
+    with m3: st.metric("Est. Profit", f"S${round(grand_total - cost_total, 2):,.2f}")
+    with m4: st.metric("Est. Margin", f"{round((grand_total - cost_total) / grand_total * 100, 1) if grand_total > 0 else 0}%")
+    render_staff_log(ss[f"{prefix}_log"], grand_total, cost_total)
+    st.divider()
+    st.subheader("Customer Reply (edit before sending)")
+    edited = st.text_area("", ss[f"{prefix}_reply"], height=350, key=f"cust_reply_{prefix}")
+    cols = st.columns(4 if save_type else 3)
+    with cols[0]:
+        st.download_button("📥 Download TXT", data=edited,
+            file_name=f"quote_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+            mime="text/plain", use_container_width=True)
+    col_i = 1
+    if save_type:
+        with cols[col_i]:
+            if st.button("💾 Save to History", type="primary", use_container_width=True, key=f"save_{prefix}"):
+                ok = save_quote(ss.cust_name, ss.cust_mobile, grand_total,
+                    ss[f"{prefix}_nitem"], edited, cost_total, quote_type=save_type)
+                if ok: st.success("✅ Saved!")
+                else:  st.error("❌ Could not save.")
+        col_i += 1
+    with cols[col_i]:
+        st.download_button("📋 Copy as TXT", data=edited,
+            file_name="quote_copy.txt", mime="text/plain", use_container_width=True)
+    col_i += 1
+    with cols[col_i]:
+        if st.button("🗑️ Clear Quote", use_container_width=True, key=f"clear_reply_{prefix}"):
+            for k in (extra_clear_keys or []):
+                ss[k] = []
+            ss[f"{prefix}_ready"] = False
+            st.rerun()
+
+# ============================================================
 # ============================================================
 # ============================================================
 # UI TABS: Quote Builder, Odd Size, Plywood, Suppliers, History
@@ -1100,58 +1193,19 @@ with tab_quote:
                 item.get("nom_w"), item.get("nom_h")
             )
             locked_total = round(locked_price * item["qty"], 2)
-
             _cca_on = item.get("cca", False)
-            _cca_badge = (
-                f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;'
-                f'background:#1D9E75;color:white;margin-left:6px">✓ CCA</span>'
-                if _cca_on else ""
-            )
 
-            if mixed_rates:
-                st.markdown(
-                    f'<div style="background:#FAEEDA;border:0.5px solid #FAC775;'
-                    f'border-radius:var(--border-radius-md);padding:10px 14px;margin-bottom:4px">'
-                    f'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
-                    f'<div style="min-width:0;flex:1">'
-                    f'<div style="font-weight:500;font-size:14px;color:#412402;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
-                    f'{item["species"]} · {item["size"]}{_cca_badge}</div>'
-                    f'<div style="margin-top:3px">'
-                    f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;background:#FAC775;color:#412402">@S${locked_rate:,}/ton</span>'
-                    f'</div>'
-                    f'<div style="font-size:13px;color:#633806;margin-top:4px">'
-                    f'S${locked_price}/pc × {item["qty"]} pcs = <b>S${locked_total:,.2f}</b></div>'
-                    f'<div style="font-size:11px;color:#854F0B;margin-top:3px">⚠️ Different rate from other {item["species"]} items</div>'
-                    f'</div></div></div>',
-                    unsafe_allow_html=True
-                )
-            else:
-                st.markdown(
-                    f'<div style="border:0.5px solid var(--color-border-tertiary);'
-                    f'border-radius:var(--border-radius-md);padding:10px 14px;margin-bottom:4px;'
-                    f'background:var(--color-background-primary)">'
-                    f'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
-                    f'<div style="min-width:0;flex:1">'
-                    f'<div style="font-weight:500;font-size:14px;color:var(--color-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
-                    f'{item["species"]} · {item["size"]}{_cca_badge}</div>'
-                    f'<div style="margin-top:3px">'
-                    f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;'
-                    f'background:var(--color-background-secondary);color:var(--color-text-secondary);'
-                    f'border:0.5px solid var(--color-border-tertiary)">@S${locked_rate:,}/ton</span>'
-                    f'</div>'
-                    f'<div style="font-size:13px;color:var(--color-text-secondary);margin-top:4px">'
-                    f'S${locked_price}/pc × {item["qty"]} pcs = <b style="color:var(--color-text-primary)">S${locked_total:,.2f}</b></div>'
-                    f'</div></div></div>',
-                    unsafe_allow_html=True
-                )
+            render_item_card(
+                title=f'{item["species"]} · {item["size"]}',
+                pills=[f"@S${locked_rate:,}/ton"],
+                detail_line=None,
+                price_line=f'S${locked_price}/pc × {item["qty"]} pcs = <b>S${locked_total:,.2f}</b>',
+                warn=mixed_rates,
+                warn_note=f'Different rate from other {item["species"]} items' if mixed_rates else None,
+                badge_html=cca_badge_html(_cca_on),
+            )
             ic1, ic2, ic3 = st.columns([9, 1, 1])
             with ic2:
-                _cca_on = item.get("cca", False)
-                _pill_style = (
-                    "background:#1D9E75;color:white;border:1.5px solid #1D9E75;"
-                    if _cca_on else
-                    "background:transparent;color:#888;border:1.5px solid #ccc;"
-                )
                 if st.button("CCA", key=f"cca_qb_{i}",
                              help="Toggle CCA anti-termite / insect borer treatment"):
                     st.session_state.order_items[i]["cca"] = not _cca_on
@@ -1234,36 +1288,7 @@ with tab_quote:
             st.session_state.q_nitem = len(customer_reply); st.session_state.q_log = log_items
 
         if st.session_state.q_ready:
-            grand_total = st.session_state.q_total; cost_total = st.session_state.q_cost
-            st.subheader("Quote Summary")
-            m1, m2, m3, m4 = st.columns(4)
-            with m1: st.metric("Items",       st.session_state.q_nitem)
-            with m2: st.metric("Grand Total", f"S${grand_total:,.2f}")
-            with m3: st.metric("Est. Profit", f"S${round(grand_total - cost_total, 2):,.2f}")
-            with m4: st.metric("Est. Margin", f"{round((grand_total - cost_total) / grand_total * 100, 1) if grand_total > 0 else 0}%")
-            render_staff_log(st.session_state.q_log, grand_total, cost_total)
-            st.divider()
-            st.subheader("Customer Reply (edit before sending)")
-            edited_reply = st.text_area("", st.session_state.q_reply, height=350, key="cust_reply_q")
-            a1, a2, a3, a4 = st.columns(4)
-            with a1:
-                st.download_button("📥 Download TXT", data=edited_reply,
-                    file_name=f"quote_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                    mime="text/plain", use_container_width=True)
-            with a2:
-                if st.button("💾 Save to History", type="primary", use_container_width=True, key="save_q"):
-                    ok = save_quote(st.session_state.cust_name, st.session_state.cust_mobile,
-                        grand_total, st.session_state.q_nitem, edited_reply, cost_total)
-                    if ok: st.success("✅ Saved!")
-                    else:  st.error("❌ Could not save.")
-            with a3:
-                st.download_button("📋 Copy as TXT", data=edited_reply,
-                    file_name="quote_copy.txt", mime="text/plain", use_container_width=True)
-            with a4:
-                if st.button("🗑️ Clear Quote", use_container_width=True, key="clear_reply_q"):
-                    st.session_state.order_items = []
-                    st.session_state.q_ready = False
-                    st.rerun()
+            render_quote_output("q", extra_clear_keys=["order_items"], save_type="Quote")
     else:
         st.info("Add items above to build your order list.")
         if st.button("RESET ALL", use_container_width=True): reset_all()
