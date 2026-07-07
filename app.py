@@ -1067,25 +1067,35 @@ def render_item_card(title, pills, detail_line, price_line, warn=False,
         unsafe_allow_html=True
     )
 
-def render_quote_output(prefix, extra_clear_keys=None, save_type=None):
-    """Renders metrics + staff log + reply textarea + action buttons.
-    save_type=None disables the Save to History button (used by Combined tab later)."""
+def render_quote_output(prefix, extra_clear_keys=None, save_type=None,
+                         show_metrics=True, show_staff_log=True,
+                         show_copy=True, show_clear=True, reply_height=350,
+                         file_prefix=None):
+    """Renders staff log + reply textarea + action buttons.
+    save_type=None disables the Save to History button.
+    show_metrics/show_staff_log/show_copy/show_clear let a tab opt out of
+    parts it doesn't use (e.g. Odd Size has no staff log display today)."""
     ss = st.session_state
     grand_total = ss[f"{prefix}_total"]; cost_total = ss[f"{prefix}_cost"]
-    st.subheader("Quote Summary")
-    m1, m2, m3, m4 = st.columns(4)
-    with m1: st.metric("Items", ss[f"{prefix}_nitem"])
-    with m2: st.metric("Grand Total", f"S${grand_total:,.2f}")
-    with m3: st.metric("Est. Profit", f"S${round(grand_total - cost_total, 2):,.2f}")
-    with m4: st.metric("Est. Margin", f"{round((grand_total - cost_total) / grand_total * 100, 1) if grand_total > 0 else 0}%")
-    render_staff_log(ss[f"{prefix}_log"], grand_total, cost_total)
+    if show_metrics:
+        st.subheader("Quote Summary")
+        m1, m2, m3, m4 = st.columns(4)
+        with m1: st.metric("Items", ss[f"{prefix}_nitem"])
+        with m2: st.metric("Grand Total", f"S${grand_total:,.2f}")
+        with m3: st.metric("Est. Profit", f"S${round(grand_total - cost_total, 2):,.2f}")
+        with m4: st.metric("Est. Margin", f"{round((grand_total - cost_total) / grand_total * 100, 1) if grand_total > 0 else 0}%")
+    if show_staff_log:
+        render_staff_log(ss[f"{prefix}_log"], grand_total, cost_total)
     st.divider()
     st.subheader("Customer Reply (edit before sending)")
-    edited = st.text_area("", ss[f"{prefix}_reply"], height=350, key=f"cust_reply_{prefix}")
-    cols = st.columns(4 if save_type else 3)
+    edited = st.text_area("", ss[f"{prefix}_reply"], height=reply_height, key=f"cust_reply_{prefix}")
+
+    n_cols = 1 + (1 if save_type else 0) + (1 if show_copy else 0) + (1 if show_clear else 0)
+    cols = st.columns(n_cols)
+    _fp = file_prefix or "quote"
     with cols[0]:
         st.download_button("📥 Download TXT", data=edited,
-            file_name=f"quote_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+            file_name=f"{_fp}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
             mime="text/plain", use_container_width=True)
     col_i = 1
     if save_type:
@@ -1096,16 +1106,18 @@ def render_quote_output(prefix, extra_clear_keys=None, save_type=None):
                 if ok: st.success("✅ Saved!")
                 else:  st.error("❌ Could not save.")
         col_i += 1
-    with cols[col_i]:
-        st.download_button("📋 Copy as TXT", data=edited,
-            file_name="quote_copy.txt", mime="text/plain", use_container_width=True)
-    col_i += 1
-    with cols[col_i]:
-        if st.button("🗑️ Clear Quote", use_container_width=True, key=f"clear_reply_{prefix}"):
-            for k in (extra_clear_keys or []):
-                ss[k] = []
-            ss[f"{prefix}_ready"] = False
-            st.rerun()
+    if show_copy:
+        with cols[col_i]:
+            st.download_button("📋 Copy as TXT", data=edited,
+                file_name="quote_copy.txt", mime="text/plain", use_container_width=True)
+        col_i += 1
+    if show_clear:
+        with cols[col_i]:
+            if st.button("🗑️ Clear Quote", use_container_width=True, key=f"clear_reply_{prefix}"):
+                for k in (extra_clear_keys or []):
+                    ss[k] = []
+                ss[f"{prefix}_ready"] = False
+                st.rerun()
 
 # ============================================================
 # ============================================================
@@ -1650,55 +1662,21 @@ with tab_odd:
             _mixed = len(_odd_sp_rates.get(item["species"], set())) > 1
             _pcs_floor = item.get("pcs_floor", math.floor(float(item["pcs_per_ton"])))
             _odd_cca_on = item.get("cca", False)
-            _odd_cca_badge = (
-                f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;'
-                f'background:#1D9E75;color:white;margin-left:6px">✓ CCA</span>'
-                if _odd_cca_on else ""
-            )
             _ca, _cb, _cc, _cd = st.columns([7, 1, 1, 1])
             with _ca:
-                if _mixed:
-                    st.markdown(
-                        f'<div style="background:#FAEEDA;border:0.5px solid #EF9F27;border-radius:var(--border-radius-md);'
-                        f'padding:10px 14px;margin-bottom:4px">'
-                        f'<div style="font-weight:500;font-size:14px;color:#412402">{item["species"]} '
-                        f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;background:#FAC775;'
-                        f'color:#412402;border:0.5px solid #EF9F27;margin-left:4px">@S${item["rate"]:,}/ton ⚠</span>'
-                        f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;background:#FAC775;'
-                        f'color:#412402;border:0.5px solid #EF9F27;margin-left:4px">{item.get("dim_type","Sawn").lower()}</span>'
-                        f'{_odd_cca_badge}</div>'
-                        f'<div style="font-size:12px;color:#854F0B;margin-top:2px">'
-                        f'Customer: {item["cust_size"]} → Priced as: {item["quote_size"]}</div>'
-                        f'<div style="font-size:13px;color:#633806;margin-top:4px">'
-                        f'S${item["price"]}/pc × {item["qty"]} pcs = <b style="color:#412402">S${item["line_total"]:,.2f}</b></div>'
-                        f'<div style="font-size:11px;color:#854F0B;margin-top:3px">⚠ Different rate from other {item["species"]} items in this quote</div>'
-                        f'<div style="border-top:0.5px solid #EF9F27;margin-top:7px;padding-top:6px;font-size:12px;color:#854F0B">'
-                        f'{_pcs_floor} pcs/ton</div>'
-                        f'</div>',
-                        unsafe_allow_html=True
-                    )
-                else:
-                    st.markdown(
-                        f'<div style="border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);'
-                        f'padding:10px 14px;background:var(--color-background-primary);margin-bottom:4px">'
-                        f'<div style="font-weight:500;font-size:14px;color:var(--color-text-primary)">{item["species"]} '
-                        f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;'
-                        f'background:var(--color-background-secondary);color:var(--color-text-secondary);'
-                        f'border:0.5px solid var(--color-border-tertiary);margin-left:4px">@S${item["rate"]:,}/ton</span>'
-                        f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;'
-                        f'background:var(--color-background-secondary);color:var(--color-text-secondary);'
-                        f'border:0.5px solid var(--color-border-tertiary);margin-left:4px">{item.get("dim_type","Sawn").lower()}</span>'
-                        f'{_odd_cca_badge}</div>'
-                        f'<div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">'
-                        f'Customer: {item["cust_size"]} → Priced as: {item["quote_size"]}</div>'
-                        f'<div style="font-size:13px;color:var(--color-text-secondary);margin-top:4px">'
-                        f'S${item["price"]}/pc × {item["qty"]} pcs = <b style="color:var(--color-text-primary)">S${item["line_total"]:,.2f}</b></div>'
-                        f'<div style="border-top:0.5px solid var(--color-border-tertiary);margin-top:7px;padding-top:6px;'
-                        f'font-size:12px;color:var(--color-text-secondary)">'
-                        f'{_pcs_floor} pcs/ton</div>'
-                        f'</div>',
-                        unsafe_allow_html=True
-                    )
+                render_item_card(
+                    title=f'{item["species"]}',
+                    pills=[
+                        f'@S${item["rate"]:,}/ton' + (' ⚠' if _mixed else ''),
+                        item.get("dim_type", "Sawn").lower(),
+                    ],
+                    detail_line=f'Customer: {item["cust_size"]} → Priced as: {item["quote_size"]}',
+                    price_line=f'S${item["price"]}/pc × {item["qty"]} pcs = <b>S${item["line_total"]:,.2f}</b>',
+                    warn=_mixed,
+                    warn_note=f'Different rate from other {item["species"]} items in this quote' if _mixed else None,
+                    footer_note=f'{_pcs_floor} pcs/ton',
+                    badge_html=cca_badge_html(_odd_cca_on),
+                )
             with _cb:
                 st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
                 if st.button("CCA", key=f"cca_odd_{i}",
@@ -1826,21 +1804,10 @@ with tab_odd:
             st.session_state.odd_nitem=len(odd_reply); st.session_state.odd_log=odd_log
 
         if st.session_state.odd_ready:
-            st.divider()
-            st.subheader("Customer Reply (edit before sending)")
-            odd_edited=st.text_area("",st.session_state.odd_reply,height=300,key="odd_reply_out")
-            od1,od2=st.columns(2)
-            with od1:
-                st.download_button("📥 Download TXT",data=odd_edited,
-                    file_name=f"odd_quote_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                    mime="text/plain",use_container_width=True)
-            with od2:
-                if st.button("💾 Save to History",type="primary",key="save_odd",use_container_width=True):
-                    ok=save_quote(st.session_state.cust_name,st.session_state.cust_mobile,
-                        st.session_state.odd_total,st.session_state.odd_nitem,odd_edited,
-                        st.session_state.odd_cost,quote_type="Odd Size")
-                    if ok: st.success("✅ Saved!")
-                    else:  st.error("❌ Could not save.")
+            render_quote_output("odd", save_type="Odd Size",
+                show_metrics=False, show_staff_log=False,
+                show_copy=False, show_clear=False, reply_height=300,
+                file_prefix="odd_quote")
     else:
         st.info("Fill in customer size above, accept or pick a quote size, then click '+ Add to Odd Size List'.")
 
@@ -2016,21 +1983,9 @@ with tab_ply:
                 st.session_state.ply_nitem=len(ply_reply); st.session_state.ply_log=ply_log
 
             if st.session_state.ply_ready:
-                render_staff_log(st.session_state.ply_log,st.session_state.ply_total,st.session_state.ply_cost)
-                st.divider()
-                st.subheader("Customer Reply (edit before sending)")
-                ply_edited=st.text_area("",st.session_state.ply_reply,height=300,key="ply_reply_out")
-                pl1,pl2=st.columns(2)
-                with pl1:
-                    st.download_button("📥 Download TXT",data=ply_edited,
-                        file_name=f"ply_quote_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                        mime="text/plain",use_container_width=True)
-                with pl2:
-                    if st.button("💾 Save to History",type="primary",key="save_ply",use_container_width=True):
-                        ok=save_quote(st.session_state.cust_name,st.session_state.cust_mobile,
-                            st.session_state.ply_total,st.session_state.ply_nitem,ply_edited,st.session_state.ply_cost)
-                        if ok: st.success("✅ Saved!")
-                        else:  st.error("❌ Could not save.")
+                render_quote_output("ply", save_type="Quote",
+                    show_metrics=False, show_copy=False, show_clear=False,
+                    reply_height=300, file_prefix="ply_quote")
         else:
             st.info("Select a grade above, then add items to the order.")
 
