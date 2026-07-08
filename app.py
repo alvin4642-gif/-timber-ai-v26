@@ -9,7 +9,7 @@ import requests
 import re
 from datetime import datetime
 
-st.set_page_config(layout="wide", page_title="Timber AI Assistant V31", page_icon="🪵")
+st.set_page_config(layout="wide", page_title="Timber AI Assistant V32", page_icon="🪵")
 
 # ============================================================
 # CSS
@@ -519,7 +519,7 @@ def reset_all():
 st.markdown("""
 <div class="app-header">
   <div class="app-header-title">🪵 Timber AI Assistant
-    <span style="background:#1D9E75;color:white;font-size:13px;padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle">V31</span>
+    <span style="background:#1D9E75;color:white;font-size:13px;padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle">V32</span>
   </div>
   <div class="app-header-sub">Professional Quoting System &nbsp;·&nbsp; Prices in SGD</div>
 </div>
@@ -2244,4 +2244,4 @@ with tab_hist:
 # FOOTER
 # ============================================================
 st.markdown("---")
-st.caption("Timber AI Assistant V31  · ALVIN  ")
+st.caption("Timber AI Assistant V32  · ALVIN  ")
