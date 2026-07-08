@@ -1097,7 +1097,7 @@ def render_quote_output(prefix, extra_clear_keys=None, save_type=None,
     with cols[0]:
         st.download_button("📥 Download TXT", data=edited,
             file_name=f"{_fp}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-            mime="text/plain", use_container_width=True)
+            mime="text/plain", use_container_width=True, key=f"dl_{prefix}")
     col_i = 1
     if save_type:
         with cols[col_i]:
@@ -1110,7 +1110,8 @@ def render_quote_output(prefix, extra_clear_keys=None, save_type=None,
     if show_copy:
         with cols[col_i]:
             st.download_button("📋 Copy as TXT", data=edited,
-                file_name="quote_copy.txt", mime="text/plain", use_container_width=True)
+                file_name=f"{_fp}_copy.txt", mime="text/plain",
+                use_container_width=True, key=f"copy_{prefix}")
         col_i += 1
     if show_clear:
         with cols[col_i]:
