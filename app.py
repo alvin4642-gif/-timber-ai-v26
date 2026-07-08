@@ -2022,11 +2022,13 @@ with tab_combined:
         if st.button("GENERATE COMBINED QUOTE", type="primary", use_container_width=True):
             combined_log = []; combined_reply = []
             combined_total = 0; combined_cost = 0
+            combined_item_count = 0
             has_cca = False
 
             # ---- Timber section (same math as Quote Builder tab) ----
             if st.session_state.order_items:
                 for item in st.session_state.order_items:
+                    combined_item_count += 1
                     locked_rate = item["rate"]
                     locked_raw, _, locked_price = calc_from_mm(
                         item["w_mm"], item["h_mm"], item["ft"], locked_rate,
@@ -2083,6 +2085,7 @@ with tab_combined:
             has_fr = False
             if st.session_state.ply_items:
                 for item in st.session_state.ply_items:
+                    combined_item_count += 1
                     _sell_r = item.get("sell_rounded", ceil_10cents(item["sell"]))
                     profit_total = round(item["profit_ps"] * item["actual_qty"], 2)
                     margin_pct = round((item["profit_ps"] / _sell_r * 100), 1) if _sell_r > 0 else 0
@@ -2136,7 +2139,7 @@ with tab_combined:
             )
             st.session_state.comb_ready = True; st.session_state.comb_reply = reply_text
             st.session_state.comb_total = combined_total; st.session_state.comb_cost = combined_cost
-            st.session_state.comb_nitem = len(combined_reply); st.session_state.comb_log = combined_log
+            st.session_state.comb_nitem = combined_item_count; st.session_state.comb_log = combined_log
 
         if st.session_state.get("comb_ready"):
             render_quote_output("comb", save_type=None, show_copy=True, show_clear=True,
