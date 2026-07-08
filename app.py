@@ -66,7 +66,7 @@ inch_to_mm = {1:20, 2:43, 3:70, 4:93, 5:117, 6:143, 7:168, 8:193, 9:218, 10:243,
 PLY_GRADES = [
     "MR China", "WBP (TA)", "BB/CC Furniture",
     "Casting Black China", "Casting Black Vietnam",
-    "Marine BS1088", "T2 Marine", "Fire Retardant BS476"
+    "Marine BS1088", "T2 Marine", "Fire Retardant BS476", "Birch Plywood"
 ]
 
 # ============================================================
@@ -425,6 +425,9 @@ PLY_SELL = {
     "Marine BS1088":         {9:36.0,   12:45.96, 15:52.0,  18:63.0,   25:84.0},
     "T2 Marine":             {6:21.0,   9:24.0,   12:31.2,  15:37.2,   18:43.2,   25:57.6},
     "Fire Retardant BS476":  {3:40.0,   6:52.0,   9:74.0,   12:93.0,   15:102.0,  18:120.0, 25:150.0},
+    # Birch base price shown in the reference table = the 10+ sheet rate.
+    # Actual price used when adding to order depends on qty — see PLY_SELL_TIERS below.
+    "Birch Plywood":         {15:98.0,  18:118.0},
 }
 PLY_COST = {
     "MR China":              {3:2.5,    6:5.1,    9:7.2,    12:10.8,   15:15.2,   18:17.3},
@@ -435,7 +438,26 @@ PLY_COST = {
     "Marine BS1088":         {9:30.0,   12:38.3,  15:46.2,  18:56.7,   25:77.7},
     "T2 Marine":             {6:17.5,   9:20.0,   12:26.0,  15:31.0,   18:36.0,   25:48.0},
     "Fire Retardant BS476":  {3:14.0,   6:26.0,   9:37.0,   12:49.0,   15:63.0,   18:70.0,  25:80.0},
+    # TODO (Alvin): cost price to be updated — placeholder S$0.00 means profit/margin
+    # will show as 100% until this is filled in. Don't quote off this until updated.
+    "Birch Plywood":         {15:0.0,   18:0.0},
 }
+# Tiered selling price — ONLY for grades where price/sheet changes based on qty
+# ordered (unlike PLY_MOQ below, which bumps qty up but keeps price fixed).
+# sell_high_qty applies when qty >= moq_threshold; sell_low_qty applies otherwise.
+PLY_SELL_TIERS = {
+    "Birch Plywood": {
+        15: {"moq_threshold": 10, "sell_high_qty": 98.0,  "sell_low_qty": 108.0},
+        18: {"moq_threshold": 10, "sell_high_qty": 118.0, "sell_low_qty": 128.0},
+    }
+}
+def get_tiered_sell_price(grade, thk, qty):
+    """Returns the tiered price for (grade, thk) at the given qty, or None if
+    this grade/thickness has no tiered pricing (use PLY_SELL as normal)."""
+    tier = PLY_SELL_TIERS.get(grade, {}).get(thk)
+    if not tier:
+        return None
+    return tier["sell_high_qty"] if qty >= tier["moq_threshold"] else tier["sell_low_qty"]
 PLY_ACTUAL = {
     "MR China":        {3: "actual +-1.8mm (China)"},
     "BB/CC Furniture": {3: "actual +-2.2mm"},
@@ -449,6 +471,7 @@ PLY_MOQ = {
     "Marine BS1088":         {},
     "T2 Marine":             {},
     "Fire Retardant BS476":  {3: 10},
+    "Birch Plywood":         {},   # no qty-bump MOQ — price tier handles this instead
 }
 
 # ============================================================
@@ -1863,23 +1886,47 @@ with tab_ply:
         p_sell_def=PLY_SELL.get(p_grade,{}).get(p_thk,0.0)
         p_cost_def=PLY_COST.get(p_grade,{}).get(p_thk,0.0)
         note=PLY_ACTUAL.get(p_grade,{}).get(p_thk,""); moq=PLY_MOQ.get(p_grade,{}).get(p_thk,1)
+
+        # Tiered pricing (e.g. Birch Plywood): the default sell price depends on
+        # qty, so peek at the qty widget's current value (persisted in session_state
+        # from the previous rerun) before drawing the price field below.
+        _cur_qty_guess = max(int(st.session_state.get("ply_qty_inp", 1)), 1)
+        _tier_price = get_tiered_sell_price(p_grade, p_thk, _cur_qty_guess)
+        _tier_bucket = ""
+        if _tier_price is not None:
+            p_sell_def = _tier_price
+            _tier_info = PLY_SELL_TIERS[p_grade][p_thk]
+            _tier_bucket = "hi" if _cur_qty_guess >= _tier_info["moq_threshold"] else "lo"
+
         if note: st.caption(f"ℹ️ {note}")
         if moq>1: st.caption(f"⚠️ MOQ: minimum {moq} sheets for this item")
+        if _tier_price is not None:
+            _ti = PLY_SELL_TIERS[p_grade][p_thk]
+            st.caption(f"💲 Tiered pricing: S${_ti['sell_high_qty']}/sheet for {_ti['moq_threshold']}+ sheets, "
+                       f"S${_ti['sell_low_qty']}/sheet for under {_ti['moq_threshold']} sheets")
         profit_preview=round(p_sell_def-p_cost_def,2)
         margin_preview=round((profit_preview/p_sell_def*100),1) if p_sell_def>0 else 0
 
         fa1,fa2,fa3,fa4=st.columns([2,1,1,1])
         with fa1:
-            p_sell_key=f"ply_sell_{p_grade}_{p_thk}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
+            p_sell_key=f"ply_sell_{p_grade}_{p_thk}_{_tier_bucket}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
             p_sell_f=st.number_input("Selling Price (S$/sheet)",min_value=0.0,value=float(p_sell_def),step=0.5,format="%.2f",key=p_sell_key)
         with fa2: p_qty_f=st.number_input("Qty (sheets)",min_value=1,value=1,step=1,key="ply_qty_inp")
         with fa3: st.markdown(f"<br><small>Default profit:<br>S${profit_preview}/sheet ({margin_preview}%)</small>",unsafe_allow_html=True)
         with fa4: st.markdown("<br>",unsafe_allow_html=True); add_ply=st.button("+ Add Plywood",type="primary",use_container_width=True,key="ply_add_btn")
 
         if p_sell_def==0.0: st.warning("⚠️ Selling price is S$0.00 — check price table.")
+        if p_cost_def==0.0: st.caption("⚠️ Cost price not yet set for this item — profit/margin shown will be inaccurate until updated.")
         if add_ply:
             p_qty_f = max(int(st.session_state.get("ply_qty_inp", 1)), 1)
-            p_sell_f = st.session_state.get(p_sell_key, p_sell_def)
+            # Recompute tier at the final qty in case it changed after the price field was drawn
+            _final_tier = get_tiered_sell_price(p_grade, p_thk, p_qty_f)
+            _final_sell_key = p_sell_key
+            if _final_tier is not None:
+                _ti2 = PLY_SELL_TIERS[p_grade][p_thk]
+                _final_bucket = "hi" if p_qty_f >= _ti2["moq_threshold"] else "lo"
+                _final_sell_key = f"ply_sell_{p_grade}_{p_thk}_{_final_bucket}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
+            p_sell_f = st.session_state.get(_final_sell_key, _final_tier if _final_tier is not None else p_sell_def)
             p_sell_rounded = ceil_10cents(p_sell_f)
             actual_qty=max(p_qty_f,moq); moq_flag=actual_qty>p_qty_f
             line_total=round(p_sell_rounded*actual_qty,2)
