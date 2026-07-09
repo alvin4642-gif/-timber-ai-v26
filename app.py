@@ -2311,7 +2311,7 @@ with tab_combined:
             st.session_state.comb_nitem = combined_item_count; st.session_state.comb_log = combined_log
 
         if st.session_state.get("comb_ready"):
-            render_quote_output("comb", save_type=None, show_copy=True, show_clear=True,
+            render_quote_output("comb", save_type="Combined", show_copy=True, show_clear=True,
                                  reply_height=350, file_prefix="combined_quote")
 
 # ============================================================
