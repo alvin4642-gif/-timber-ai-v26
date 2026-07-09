@@ -2314,6 +2314,13 @@ with tab_combined:
             render_quote_output("comb", save_type="Combined", show_copy=True, show_clear=True,
                                  reply_height=350, file_prefix="combined_quote")
 
+    st.divider()
+    st.caption("Starting a brand new quote? This clears customer info and every item currently "
+               "in Quote Builder, Odd Size, and Plywood, and resets species rates / CCA settings "
+               "back to default.")
+    if st.button("🔄 Clear All & Start New Quote", use_container_width=True, key="comb_full_reset"):
+        reset_all()
+
 # ============================================================
 # TAB 4 — SUPPLIERS
 # ============================================================
