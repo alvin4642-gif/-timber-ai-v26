@@ -648,6 +648,102 @@ def save_history(history):
     except Exception as e:
         st.error(f"❌ Network error: {str(e)}"); return False
 
+# ---- Plywood cost overrides + rate change log (same gist, two more files) ----
+def _ply_override_key(grade, thk):
+    return f"{grade}|{thk}"
+
+def load_ply_cost_overrides():
+    """Returns {"Grade|thk": cost} for any grade/thickness with a manually
+    updated cost price. Falls back to {} if the gist file doesn't exist yet
+    (e.g. before the first cost update is ever made)."""
+    gist_id = st.secrets.get("gist_id", "")
+    if not gist_id: return {}
+    try:
+        r = requests.get(f"https://api.github.com/gists/{gist_id}",
+                         headers=gist_headers(), timeout=15)
+        if r.status_code == 200:
+            files = r.json().get("files", {})
+            if "ply_cost_overrides.json" not in files: return {}
+            raw = files["ply_cost_overrides.json"]["content"]
+            if not raw or raw.strip() == "{}": return {}
+            return json.loads(raw)
+    except Exception:
+        pass
+    return {}
+
+def save_ply_cost_overrides(overrides):
+    gist_id = st.secrets.get("gist_id", "")
+    if not gist_id: st.error("❌ gist_id not set in Streamlit secrets."); return False
+    try:
+        r = requests.patch(
+            f"https://api.github.com/gists/{gist_id}",
+            headers=gist_headers(),
+            json={"files": {"ply_cost_overrides.json": {"content": json.dumps(overrides, indent=2)}}},
+            timeout=15)
+        return r.status_code == 200
+    except Exception as e:
+        st.error(f"❌ Network error: {str(e)}"); return False
+
+def load_ply_rate_log():
+    gist_id = st.secrets.get("gist_id", "")
+    if not gist_id: return []
+    try:
+        r = requests.get(f"https://api.github.com/gists/{gist_id}",
+                         headers=gist_headers(), timeout=15)
+        if r.status_code == 200:
+            files = r.json().get("files", {})
+            if "ply_rate_log.json" not in files: return []
+            raw = files["ply_rate_log.json"]["content"]
+            if not raw or raw.strip() == "[]": return []
+            return json.loads(raw)
+    except Exception:
+        pass
+    return []
+
+def save_ply_rate_log(log):
+    gist_id = st.secrets.get("gist_id", "")
+    if not gist_id: return False
+    try:
+        r = requests.patch(
+            f"https://api.github.com/gists/{gist_id}",
+            headers=gist_headers(),
+            json={"files": {"ply_rate_log.json": {"content": json.dumps(log, indent=2)}}},
+            timeout=15)
+        return r.status_code == 200
+    except Exception as e:
+        st.error(f"❌ Network error: {str(e)}"); return False
+
+def update_ply_cost(grade, thk, new_cost):
+    """Persists a new cost price for (grade, thk): updates the live override
+    and appends one entry to the rate change log. Returns True on success."""
+    overrides = load_ply_cost_overrides()
+    key = _ply_override_key(grade, thk)
+    old_cost = overrides.get(key, PLY_COST.get(grade, {}).get(thk, 0.0))
+    if round(float(old_cost), 2) == round(float(new_cost), 2):
+        return True  # no actual change, nothing to save
+    overrides[key] = round(float(new_cost), 2)
+    ok1 = save_ply_cost_overrides(overrides)
+    log = load_ply_rate_log()
+    log.insert(0, {
+        "date": datetime.now().strftime("%d %b %Y"), "time": datetime.now().strftime("%H:%M"),
+        "grade": grade, "thk": thk, "old_cost": round(float(old_cost), 2), "new_cost": round(float(new_cost), 2)
+    })
+    ok2 = save_ply_rate_log(log)
+    if ok1 and ok2:
+        st.session_state.ply_cost_overrides = overrides  # refresh in-memory cache
+    return ok1 and ok2
+
+def effective_ply_cost(grade, thk):
+    """Live cost price for (grade, thk): manual override if one exists, else the code default."""
+    overrides = st.session_state.get("ply_cost_overrides", {})
+    key = _ply_override_key(grade, thk)
+    if key in overrides:
+        return overrides[key]
+    return PLY_COST.get(grade, {}).get(thk, 0.0)
+
+if "ply_cost_overrides" not in st.session_state:
+    st.session_state.ply_cost_overrides = load_ply_cost_overrides()
+
 def save_quote(customer, mobile, total, items, quote_text, cost_total=0, quote_type="Quote"):
     history = load_history()
     profit  = round(total - cost_total, 2)
@@ -1859,7 +1955,7 @@ with tab_ply:
             if sel in PLY_SELL:
                 tbl_rows = []
                 for thk in sorted(PLY_SELL[sel].keys()):
-                    cost=PLY_COST.get(sel,{}).get(thk,0.0); sell_def=PLY_SELL[sel][thk]
+                    cost=effective_ply_cost(sel,thk); sell_def=PLY_SELL[sel][thk]
                     profit=round(sell_def-cost,2); margin=round((profit/sell_def*100),1) if sell_def>0 else 0
                     note=PLY_ACTUAL.get(sel,{}).get(thk,""); moq=PLY_MOQ.get(sel,{}).get(thk,1)
                     notes=[]
@@ -1884,7 +1980,7 @@ with tab_ply:
             p_thk=st.selectbox("Thickness (mm)",avail_thk,key=p_thk_key)
 
         p_sell_def=PLY_SELL.get(p_grade,{}).get(p_thk,0.0)
-        p_cost_def=PLY_COST.get(p_grade,{}).get(p_thk,0.0)
+        p_cost_def=effective_ply_cost(p_grade,p_thk)
         note=PLY_ACTUAL.get(p_grade,{}).get(p_thk,""); moq=PLY_MOQ.get(p_grade,{}).get(p_thk,1)
 
         # Tiered pricing (e.g. Birch Plywood): the default sell price depends on
@@ -1917,6 +2013,32 @@ with tab_ply:
 
         if p_sell_def==0.0: st.warning("⚠️ Selling price is S$0.00 — check price table.")
         if p_cost_def==0.0: st.caption("⚠️ Cost price not yet set for this item — profit/margin shown will be inaccurate until updated.")
+
+        with st.expander(f"✏️ Update cost price for {p_grade} {p_thk}mm", expanded=False):
+            _new_cost_key=f"newcost_{p_grade}_{p_thk}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
+            nc1, nc2 = st.columns([2,1])
+            with nc1:
+                new_cost_val = st.number_input("New cost price (S$/sheet)", min_value=0.0,
+                    value=float(p_cost_def), step=0.5, format="%.2f", key=_new_cost_key)
+            with nc2:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("💾 Save cost price", key=f"savecost_{_new_cost_key}", use_container_width=True):
+                    if update_ply_cost(p_grade, p_thk, new_cost_val):
+                        st.success(f"✅ Cost updated: S${p_cost_def:.2f} → S${new_cost_val:.2f}")
+                        st.rerun()
+                    else:
+                        st.error("❌ Could not save — check gist_id / github_token in Streamlit secrets.")
+            _rlog = load_ply_rate_log()
+            _rlog_here = [r for r in _rlog if r["grade"]==p_grade and r["thk"]==p_thk]
+            if _rlog_here:
+                st.caption("Rate history for this item:")
+                render_table([
+                    {"Date": f'{r["date"]} {r["time"]}', "Old cost": f'S${r["old_cost"]}', "New cost": f'S${r["new_cost"]}'}
+                    for r in _rlog_here[:10]
+                ])
+            else:
+                st.caption("No cost changes recorded yet for this item.")
+
         if add_ply:
             p_qty_f = max(int(st.session_state.get("ply_qty_inp", 1)), 1)
             # Recompute tier at the final qty in case it changed after the price field was drawn
