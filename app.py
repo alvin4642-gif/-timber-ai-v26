@@ -7,7 +7,13 @@ import math
 import json
 import requests
 import re
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+# Streamlit Cloud servers run in UTC — Singapore has no daylight saving,
+# so a fixed +8 offset is reliable without depending on system tzdata.
+SGT = timezone(timedelta(hours=8))
+def now_sgt():
+    return datetime.now(SGT)
 
 st.set_page_config(layout="wide", page_title="Timber AI Assistant V32", page_icon="🪵")
 
@@ -727,7 +733,7 @@ def update_ply_cost(grade, thk, new_cost):
     ok1 = save_ply_cost_overrides(overrides)
     log = load_ply_rate_log()
     log.insert(0, {
-        "date": datetime.now().strftime("%d %b %Y"), "time": datetime.now().strftime("%H:%M"),
+        "date": now_sgt().strftime("%d %b %Y"), "time": now_sgt().strftime("%H:%M"),
         "grade": grade, "thk": thk, "old_cost": round(float(old_cost), 2), "new_cost": round(float(new_cost), 2)
     })
     ok2 = save_ply_rate_log(log)
@@ -751,9 +757,9 @@ def save_quote(customer, mobile, total, items, quote_text, cost_total=0, quote_t
     profit  = round(total - cost_total, 2)
     margin  = round((profit / total * 100), 1) if total > 0 else 0
     entry   = {
-        "id":       datetime.now().strftime("%Y%m%d_%H%M%S"),
-        "date":     datetime.now().strftime("%d %b %Y"),
-        "time":     datetime.now().strftime("%H:%M"),
+        "id":       now_sgt().strftime("%Y%m%d_%H%M%S"),
+        "date":     now_sgt().strftime("%d %b %Y"),
+        "time":     now_sgt().strftime("%H:%M"),
         "customer": customer.strip() if customer.strip() else "—",
         "mobile":   mobile.strip()   if mobile.strip()   else "—",
         "type":     quote_type,
@@ -1241,7 +1247,7 @@ def render_quote_output(prefix, extra_clear_keys=None, save_type=None,
     _fp = file_prefix or "quote"
     with cols[0]:
         st.download_button("📥 Download TXT", data=edited,
-            file_name=f"{_fp}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+            file_name=f"{_fp}_{now_sgt().strftime('%Y%m%d_%H%M%S')}.txt",
             mime="text/plain", use_container_width=True, key=f"dl_{prefix}")
     col_i = 1
     if save_type:
