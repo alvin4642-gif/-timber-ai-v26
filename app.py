@@ -522,6 +522,8 @@ _defaults = {
     "comb_ready": False, "comb_reply": "", "comb_total": 0.0, "comb_cost": 0.0, "comb_nitem": 0, "comb_log": [],
     "hist_search_val": "",
     "rate_reset_key": 0,
+    "cust_form_key": 0,
+    "qrc_search": "",
 }
 for _k, _v in _defaults.items():
     if _k not in st.session_state:
@@ -765,6 +767,30 @@ def save_quote(customer, mobile, total, items, quote_text, cost_total=0, quote_t
 def delete_quote(qid):
     history = load_history()
     save_history([q for q in history if q.get("id") != qid])
+
+def find_recent_customers(query, limit=5):
+    """Returns up to `limit` unique (name, mobile) pairs from History, most
+    recent first, matching `query` anywhere in the name or mobile number.
+    Empty query returns the most recent unique customers overall."""
+    history = load_history()
+    query = query.strip().lower()
+    seen = set()
+    results = []
+    for entry in history:
+        name = entry.get("customer", "—")
+        mobile = entry.get("mobile", "—")
+        if name == "—" and mobile == "—":
+            continue
+        key = (name, mobile)
+        if key in seen:
+            continue
+        if query and query not in name.lower() and query not in mobile.lower():
+            continue
+        seen.add(key)
+        results.append({"name": name, "mobile": mobile, "date": entry.get("date", "")})
+        if len(results) >= limit:
+            break
+    return results
 
 # ============================================================
 # CALC FUNCTIONS
@@ -1256,17 +1282,41 @@ tab_quote, tab_odd, tab_ply, tab_combined, tab_sup, tab_hist = st.tabs([
 # TAB 1 — QUOTE BUILDER
 # ============================================================
 with tab_quote:
+    st.markdown("#### Quick repeat customer")
+    qrc_query = st.text_input("Search by name or mobile", value=st.session_state.qrc_search,
+        placeholder="e.g. Tan or 9123", key="qrc_search_inp", label_visibility="collapsed")
+    st.session_state.qrc_search = qrc_query
+    if qrc_query.strip():
+        _matches = find_recent_customers(qrc_query, limit=5)
+        if _matches:
+            for _m in _matches:
+                _mc1, _mc2 = st.columns([4, 1])
+                with _mc1:
+                    st.markdown(f'<div style="padding:8px 0"><b>{_m["name"]}</b><br>'
+                                f'<span style="font-size:12px;color:var(--color-text-secondary)">'
+                                f'{_m["mobile"]} · last quote {_m["date"]}</span></div>', unsafe_allow_html=True)
+                with _mc2:
+                    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+                    if st.button("Use", key=f"qrc_use_{_m['name']}_{_m['mobile']}", use_container_width=True):
+                        st.session_state.cust_name = _m["name"]
+                        st.session_state.cust_mobile = _m["mobile"]
+                        st.session_state.cust_form_key += 1
+                        st.session_state.qrc_search = ""
+                        st.rerun()
+        else:
+            st.caption("No matching customers found in History.")
+    st.divider()
     st.markdown("#### Customer Details")
     cd1, cd2 = st.columns(2)
     with cd1:
         cust_name = st.text_input("Customer Name / Company",
             value=st.session_state.cust_name,
-            placeholder="e.g. ABC Construction Pte Ltd", key="cust_name_inp")
+            placeholder="e.g. ABC Construction Pte Ltd", key=f"cust_name_inp_{st.session_state.cust_form_key}")
         st.session_state.cust_name = cust_name
     with cd2:
         cust_mobile = st.text_input("Mobile Number",
             value=st.session_state.cust_mobile,
-            placeholder="e.g. 9123 4567", key="cust_mobile_inp")
+            placeholder="e.g. 9123 4567", key=f"cust_mobile_inp_{st.session_state.cust_form_key}")
         st.session_state.cust_mobile = cust_mobile
     st.divider()
     st.subheader("Add Timber Item")
@@ -1437,11 +1487,13 @@ with tab_odd:
     od_cd1, od_cd2 = st.columns(2)
     with od_cd1:
         odd_cust_name = st.text_input("Customer Name / Company",
-            value=st.session_state.cust_name, placeholder="e.g. ABC Construction Pte Ltd", key="odd_cust_name_inp")
+            value=st.session_state.cust_name, placeholder="e.g. ABC Construction Pte Ltd",
+            key=f"odd_cust_name_inp_{st.session_state.cust_form_key}")
         st.session_state.cust_name = odd_cust_name
     with od_cd2:
         odd_cust_mobile = st.text_input("Mobile Number",
-            value=st.session_state.cust_mobile, placeholder="e.g. 9123 4567", key="odd_cust_mobile_inp")
+            value=st.session_state.cust_mobile, placeholder="e.g. 9123 4567",
+            key=f"odd_cust_mobile_inp_{st.session_state.cust_form_key}")
         st.session_state.cust_mobile = odd_cust_mobile
     st.divider()
 
