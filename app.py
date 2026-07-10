@@ -1220,6 +1220,43 @@ def cca_badge_html(cca_on):
         if cca_on else ""
     )
 
+def cca_status_pill(items):
+    """Small at-a-glance pill showing whether any item in this list has CCA
+    treatment on. Returns "" (render nothing) if none do."""
+    n_cca = sum(1 for it in (items or []) if it.get("cca", False))
+    if n_cca == 0:
+        return ""
+    return (
+        f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;'
+        f'background:#1D9E75;color:white;margin-left:6px">🧪 {n_cca} item'
+        f'{"s" if n_cca != 1 else ""} with CCA</span>'
+    )
+
+def clipboard_copy_button(text, key, label="📋 Copy as TXT"):
+    """Real clipboard copy (navigator.clipboard.writeText) instead of a file
+    download, so staff can paste straight into WhatsApp/email."""
+    btn_id = f"copybtn_{key}"
+    js_text = json.dumps(text)
+    st.markdown(f"""
+        <button id="{btn_id}" onclick="
+            navigator.clipboard.writeText({js_text}).then(function() {{
+                var b = document.getElementById('{btn_id}');
+                var orig = b.innerText;
+                b.innerText = '✅ Copied!';
+                setTimeout(function() {{ b.innerText = orig; }}, 1500);
+            }}).catch(function() {{
+                var b = document.getElementById('{btn_id}');
+                b.innerText = '⚠️ Copy failed';
+            }});
+        " style="width:100%;padding:0.5rem 1rem;border-radius:0.5rem;
+            border:1px solid var(--color-border-tertiary);
+            background:var(--color-background-primary);
+            color:var(--color-text-primary);cursor:pointer;font-size:14px;
+            margin-top:2px;height:2.5rem;">
+            {label}
+        </button>
+    """, unsafe_allow_html=True)
+
 def render_item_card(title, pills, detail_line, price_line, warn=False,
                       warn_note=None, footer_note=None, badge_html=""):
     if warn:
@@ -1302,9 +1339,7 @@ def render_quote_output(prefix, extra_clear_keys=None, save_type=None,
         col_i += 1
     if show_copy:
         with cols[col_i]:
-            st.download_button("📋 Copy as TXT", data=edited,
-                file_name=f"{_fp}_copy.txt", mime="text/plain",
-                use_container_width=True, key=f"copy_{prefix}")
+            clipboard_copy_button(edited, key=prefix)
         col_i += 1
     if show_clear:
         with cols[col_i]:
@@ -1430,7 +1465,8 @@ with tab_quote:
         st.markdown(
             f'<div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:6px">'
             f'Items in order: <span style="background:#1D9E75;color:white;font-size:12px;'
-            f'padding:2px 8px;border-radius:99px;font-weight:600">{n_items}</span></div>',
+            f'padding:2px 8px;border-radius:99px;font-weight:600">{n_items}</span>'
+            f'{cca_status_pill(st.session_state.order_items)}</div>',
             unsafe_allow_html=True
         )
         # Build per-species rate sets to detect mixed rates within same species
@@ -1900,6 +1936,13 @@ with tab_odd:
 
     if st.session_state.odd_items:
         st.divider()
+        st.markdown(
+            f'<div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:6px">'
+            f'Items in order: <span style="background:#1D9E75;color:white;font-size:12px;'
+            f'padding:2px 8px;border-radius:99px;font-weight:600">{len(st.session_state.odd_items)}</span>'
+            f'{cca_status_pill(st.session_state.odd_items)}</div>',
+            unsafe_allow_html=True
+        )
         _odd_sp_rates = {}
         for _oit in st.session_state.odd_items:
             _odd_sp_rates.setdefault(_oit["species"], set()).add(_oit["rate"])
@@ -2052,7 +2095,7 @@ with tab_odd:
         if st.session_state.odd_ready:
             render_quote_output("odd", save_type="Odd Size",
                 show_metrics=False, show_staff_log=False,
-                show_copy=False, show_clear=False, reply_height=300,
+                show_copy=True, show_clear=False, reply_height=300,
                 file_prefix="odd_quote")
     else:
         st.info("Fill in customer size above, accept or pick a quote size, then click '+ Add to Odd Size List'.")
@@ -2186,28 +2229,31 @@ with tab_ply:
 
         if st.session_state.ply_items:
             st.divider()
-            st.markdown("**Items in Order**")
+            st.markdown(f"**Items in Order**{cca_status_pill(st.session_state.ply_items)}",
+                        unsafe_allow_html=True)
             for i,item in enumerate(st.session_state.ply_items):
                 _ply_cca_on = item.get("cca", False)
-                _ply_cca_badge = (
-                    ' <span style="font-size:11px;padding:1px 8px;border-radius:99px;'
-                    'background:#1D9E75;color:white;margin-left:6px">✓ CCA</span>'
-                    if _ply_cca_on else ""
+                _ply_profit_total = round(item['profit_ps']*item['actual_qty'],2)
+                _ply_pills = [f"{item['thk']}mm"]
+                if item["moq_flag"]:
+                    _ply_pills.append("⚠️ MOQ")
+
+                render_item_card(
+                    title=item['grade'],
+                    pills=_ply_pills,
+                    detail_line=f"Profit: S${_ply_profit_total:,.2f}",
+                    price_line=(f'S${item["sell"]}/sheet × {item["actual_qty"]} sheets = '
+                                f'<b>S${item["line_total"]:,.2f}</b>'),
+                    badge_html=cca_badge_html(_ply_cca_on),
                 )
-                col_a,col_b,col_c,col_d,col_e=st.columns([3,3,1,1,1])
-                with col_a:
-                    moq_badge=" ⚠️ MOQ" if item["moq_flag"] else ""
-                    st.markdown(f"**{item['grade']}** &nbsp; {item['thk']}mm{moq_badge}{_ply_cca_badge}",unsafe_allow_html=True)
-                with col_b:
-                    st.markdown(f"S\\${item['sell']}/sheet &nbsp;×&nbsp; {item['actual_qty']} sheets &nbsp;=&nbsp; **S\\${item['line_total']:,.2f}**",unsafe_allow_html=True)
-                with col_c: st.caption(f"Profit: S${round(item['profit_ps']*item['actual_qty'],2):,.2f}")
-                with col_d:
+                pc1, pc2, pc3 = st.columns([9, 1, 1])
+                with pc2:
                     if st.button("CCA", key=f"cca_ply_{i}",
                                  help="Toggle CCA anti-termite / insect borer treatment"):
                         st.session_state.ply_items[i]["cca"] = not _ply_cca_on
                         st.session_state.ply_ready = False
                         st.rerun()
-                with col_e:
+                with pc3:
                     if st.button("🗑️",key=f"dply_{i}"):
                         st.session_state.ply_items.pop(i); st.session_state.ply_ready=False; st.rerun()
 
@@ -2280,7 +2326,7 @@ with tab_ply:
 
             if st.session_state.ply_ready:
                 render_quote_output("ply", save_type="Quote",
-                    show_metrics=False, show_copy=False, show_clear=False,
+                    show_metrics=False, show_copy=True, show_clear=False,
                     reply_height=300, file_prefix="ply_quote")
         else:
             st.info("Select a grade above, then add items to the order.")
@@ -2309,6 +2355,10 @@ with tab_combined:
     cc1, cc2 = st.columns(2)
     with cc1: st.metric("Timber items (Quote Builder)", n_timber)
     with cc2: st.metric("Plywood items", n_ply)
+    _comb_cca_pill = cca_status_pill(st.session_state.order_items + st.session_state.ply_items)
+    if _comb_cca_pill:
+        st.markdown(f'<div style="margin-top:-6px;margin-bottom:6px">{_comb_cca_pill}</div>',
+                    unsafe_allow_html=True)
 
     if n_timber == 0 and n_ply == 0:
         st.info("Add items in the Quote Builder and/or Plywood tab first, then come back here to combine them.")
