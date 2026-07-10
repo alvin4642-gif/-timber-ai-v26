@@ -10,7 +10,9 @@ import re
 from datetime import datetime, timezone, timedelta
 
 # Streamlit Cloud servers run in UTC — Singapore has no daylight saving,
-# so a fixed +8 offset is reliable without depending on system tzdata.
+# so a fixed +8 offset is reliable without depending on system tzdata
+# (zoneinfo needs a tzdata package that isn't always present in minimal
+# cloud containers, so a fixed offset is the safer choice here).
 SGT = timezone(timedelta(hours=8))
 def now_sgt():
     return datetime.now(SGT)
@@ -764,10 +766,46 @@ def save_quote(customer, mobile, total, items, quote_text, cost_total=0, quote_t
         "mobile":   mobile.strip()   if mobile.strip()   else "—",
         "type":     quote_type,
         "items": items, "total": total, "cost": cost_total,
-        "profit": profit, "margin": margin, "text": quote_text
+        "profit": profit, "margin": margin, "text": quote_text,
+        "closed": False, "closed_date": "",
+        "valid_until": (now_sgt() + timedelta(days=30)).strftime("%d %b %Y")
     }
     history.insert(0, entry)
     history = history[:200]
+    return save_history(history)
+
+def quote_is_expired(q):
+    """True if the quote's validity date has passed. Falls back to
+    date-saved + 30 days for quotes saved before valid_until existed."""
+    valid_until_str = q.get("valid_until", "")
+    if not valid_until_str:
+        saved_date_str = q.get("date", "")
+        if not saved_date_str:
+            return False
+        try:
+            saved_date = datetime.strptime(saved_date_str, "%d %b %Y")
+        except ValueError:
+            return False
+        valid_until = saved_date + timedelta(days=30)
+    else:
+        try:
+            valid_until = datetime.strptime(valid_until_str, "%d %b %Y")
+        except ValueError:
+            return False
+    return now_sgt().replace(tzinfo=None) > valid_until
+
+def mark_quote_closed(qid):
+    """Marks a quote as closed with today's SGT date. Returns True on success."""
+    history = load_history()
+    found = False
+    for q in history:
+        if q.get("id") == qid:
+            q["closed"] = True
+            q["closed_date"] = now_sgt().strftime("%d %b %Y")
+            found = True
+            break
+    if not found:
+        return False
     return save_history(history)
 
 def delete_quote(qid):
@@ -828,7 +866,7 @@ def calc_from_mm(w_mm, h_mm, ft, rate, nom_w=None, nom_h=None):
 def is_keruing(species):
     return species in ["Mixed Keruing", "Pure Keruing"]
 
-def build_reply(lines, total, is_timber=True, is_plywood=False, extra_note=""):
+def build_reply(lines, total, is_timber=True, is_plywood=False, extra_note="", valid_days=30):
     """
     Build customer reply text.
     - Total line removed (per-line subtotals are sufficient)
@@ -836,6 +874,7 @@ def build_reply(lines, total, is_timber=True, is_plywood=False, extra_note=""):
         Timber:  Thickness/Width +-1~2mm  |  Length +-25~50mm
         Plywood: Thickness +-0.8~1.2mm
         Mixed:   both sections labelled
+    - Validity date appended at the end (default 30 days from date of issue)
     """
     out = list(lines)
     out.append("\nTolerances:")
@@ -857,6 +896,8 @@ def build_reply(lines, total, is_timber=True, is_plywood=False, extra_note=""):
     out.append("\nDelivery / Self Collection:")
     out.append("30 Kranji Loop (Blk A) #04-05")
     out.append("TimMac @ Kranji S739570")
+    valid_until = (now_sgt() + timedelta(days=valid_days)).strftime("%d %b %Y")
+    out.append(f"\nThis quotation is valid until {valid_until}.")
     return "\n".join(out)
 
 # ============================================================
@@ -2444,38 +2485,96 @@ with tab_hist:
         st.info("No quotes saved yet. Generate a quote and click 'Save to History'.")
     else:
         active_search=st.session_state.hist_search_val.strip()
-        filtered=[q for q in history
+        name_matched=[q for q in history
             if active_search.lower() in q.get("customer","").lower()
             or active_search in q.get("mobile","")
         ] if active_search else history
 
+        # ---- Type filter + Closed-only filter ----
+        _type_options = ["All"] + sorted(set(q.get("type","Quote") for q in history))
+        ft1, ft2 = st.columns([3,1])
+        with ft1:
+            type_filter = st.radio("Quote type", _type_options, horizontal=True,
+                key="hist_type_filter", label_visibility="collapsed")
+        with ft2:
+            closed_only = st.checkbox("Closed only", key="hist_closed_only")
+
+        filtered = name_matched
+        if type_filter != "All":
+            filtered = [q for q in filtered if q.get("type","Quote")==type_filter]
+        if closed_only:
+            filtered = [q for q in filtered if q.get("closed", False)]
+
+        # ---- Overview metrics (based on full history, not the active filter) ----
+        n_closed = sum(1 for q in history if q.get("closed", False))
+        closed_value = sum(float(q.get("total",0)) for q in history if q.get("closed", False))
+        closing_rate = round((n_closed / len(history) * 100), 1) if history else 0
+
         h1,h2,h3,h4=st.columns(4)
         with h1: st.metric("Total Quotes",     len(history))
-        with h2: st.metric("All-time Revenue", f"S${sum(float(q.get('total',0)) for q in history):,.2f}")
-        with h3: st.metric("All-time Profit",  f"S${sum(float(q.get('profit',0)) for q in history):,.2f}")
-        with h4: st.metric("Unique Customers", len(set(q.get("customer","") for q in history if q.get("customer","—")!="—")))
+        with h2: st.metric("Closed / Won",     n_closed)
+        with h3: st.metric("Closing Rate",     f"{closing_rate}%")
+        with h4: st.metric("Closed Value",     f"S${closed_value:,.2f}")
+        h5,h6=st.columns(2)
+        with h5: st.metric("All-time Revenue (quoted)", f"S${sum(float(q.get('total',0)) for q in history):,.2f}")
+        with h6: st.metric("Unique Customers", len(set(q.get("customer","") for q in history if q.get("customer","—")!="—")))
         st.divider()
 
-        if active_search: st.caption(f"{len(filtered)} quote(s) found for '{active_search}'")
+        # ---- Customer summary card: shown when the search narrows to exactly one customer name ----
+        _unique_names = set(q.get("customer","—") for q in name_matched)
+        if active_search and len(_unique_names) == 1 and name_matched:
+            _cname = next(iter(_unique_names))
+            _c_mobiles = sorted(set(q.get("mobile","—") for q in name_matched))
+            _c_total = sum(float(q.get("total",0)) for q in name_matched)
+            _c_closed = [q for q in name_matched if q.get("closed", False)]
+            _c_closed_value = sum(float(q.get("total",0)) for q in _c_closed)
+            _dates = [q.get("date","") for q in name_matched if q.get("date")]
+            _date_range = f"{_dates[-1]} – {_dates[0]}" if len(_dates) > 1 else (_dates[0] if _dates else "—")
+            _mobiles_note = f" ({', '.join(_c_mobiles)})" if len(_c_mobiles) > 1 else ""
+            st.markdown(
+                f'<div style="background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);'
+                f'border-radius:var(--border-radius-md);padding:12px 16px;margin-bottom:14px">'
+                f'<div style="font-size:13px;font-weight:600;margin-bottom:6px">Customer summary — {_cname}{_mobiles_note}</div>'
+                f'<div style="font-size:13px;color:var(--color-text-secondary)">'
+                f'{len(name_matched)} quote(s) &nbsp;·&nbsp; S${_c_total:,.2f} total quoted &nbsp;·&nbsp; '
+                f'{len(_c_closed)} closed (S${_c_closed_value:,.2f}) &nbsp;·&nbsp; {_date_range}'
+                f'</div></div>', unsafe_allow_html=True
+            )
+
+        if active_search or type_filter != "All" or closed_only:
+            st.caption(f"{len(filtered)} quote(s) found")
         if not filtered:
-            st.info("No quotes match your search.")
+            st.info("No quotes match your search/filter.")
         else:
             for i,q in enumerate(filtered):
                 name=q.get("customer","—"); mobile=q.get("mobile","—")
                 date=q.get("date","");      time=q.get("time","")
                 total=float(q.get("total",0)); profit=float(q.get("profit",0)); margin=float(q.get("margin",0))
                 text=q.get("text",""); qid=q.get("id",str(i)); qtype=q.get("type","Quote")
-                type_icon="📐" if qtype=="Odd Size" else "📄"
-                label=f"{type_icon} [{qtype}]  {date} {time}  ·  {name}  ·  {mobile}  ·  SGD {total:,.2f}  ·  Profit SGD {profit:,.2f}  ({margin}%)"
+                is_closed = q.get("closed", False); closed_date = q.get("closed_date","")
+                is_expired = quote_is_expired(q) and not is_closed
+                type_icon={"Odd Size":"📐","Combined":"🔀"}.get(qtype,"📄")
+                status_badge = ""
+                if is_closed: status_badge = f" &nbsp;✅ Closed {closed_date}"
+                elif is_expired: status_badge = " &nbsp;⏰ Expired"
+                label=f"{type_icon} [{qtype}]  {date} {time}  ·  {name}  ·  {mobile}  ·  SGD {total:,.2f}  ·  Profit SGD {profit:,.2f}  ({margin}%){status_badge}"
                 with st.expander(label):
-                    st.text_area("Full quote",value=text,height=300,key=f"qt_{i}")
-                    hb1,hb2=st.columns(2)
+                    st.text_area("Full quote",value=text,height=300,key=f"qt_{i}_{qid}")
+                    hb1,hb2,hb3=st.columns(3)
                     with hb1:
                         st.download_button("📥 Download TXT",data=text,
                             file_name=f"quote_{date}_{name}.txt".replace(" ","_"),
-                            mime="text/plain",key=f"dl_{i}",use_container_width=True)
+                            mime="text/plain",key=f"dl_{i}_{qid}",use_container_width=True)
                     with hb2:
-                        if st.button("🗑️ Delete",key=f"dh_{i}",use_container_width=True):
+                        if is_closed:
+                            st.button(f"✅ Closed on {closed_date}", key=f"closed_{i}_{qid}",
+                                      disabled=True, use_container_width=True)
+                        else:
+                            if st.button("✅ Mark closed", key=f"markclosed_{i}_{qid}", use_container_width=True):
+                                if mark_quote_closed(qid): st.success("Marked as closed."); st.rerun()
+                                else: st.error("Could not update — try refreshing.")
+                    with hb3:
+                        if st.button("🗑️ Delete",key=f"dh_{i}_{qid}",use_container_width=True):
                             delete_quote(qid); st.success("Deleted."); st.rerun()
 
 # ============================================================
