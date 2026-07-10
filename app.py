@@ -1233,39 +1233,61 @@ def cca_status_pill(items):
     )
 
 def clipboard_copy_button(text, key, label="📋 Copy as TXT"):
-    """Real clipboard copy (navigator.clipboard.writeText) instead of a file
-    download, so staff can paste straight into WhatsApp/email."""
+    """Real clipboard copy (navigator.clipboard.writeText, with an
+    execCommand fallback) instead of a file download, so staff can paste
+    straight into WhatsApp/email.
+    Uses components.v1.html (not st.markdown) because Streamlit's markdown
+    sanitizer strips inline onclick="..." attributes even with
+    unsafe_allow_html=True — the button would render but do nothing."""
+    import streamlit.components.v1 as components
     btn_id = f"copybtn_{key}"
-    js_text = json.dumps(text)
-    # HTML-escape so embedded quotes (e.g. 3" x 3") don't prematurely close
-    # the onclick="..." attribute, and escape $ so Streamlit's markdown
-    # doesn't mistake "S$xxx...S$yyy" pairs for LaTeX math.
-    js_text_safe = (js_text
-        .replace("&", "&amp;")
-        .replace('"', "&quot;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace("$", "&#36;"))
-    label_safe = label.replace("$", "&#36;")
-    st.markdown(f"""
-        <button id="{btn_id}" onclick="
-            navigator.clipboard.writeText({js_text_safe}).then(function() {{
-                var b = document.getElementById('{btn_id}');
-                var orig = b.innerText;
-                b.innerText = '✅ Copied!';
-                setTimeout(function() {{ b.innerText = orig; }}, 1500);
-            }}).catch(function() {{
-                var b = document.getElementById('{btn_id}');
-                b.innerText = '⚠️ Copy failed';
+    # </script> inside the quote text would otherwise break out of our
+    # <script> block, so neutralise any "</" sequence.
+    js_text = json.dumps(text).replace("</", "<\\/")
+    label_js = json.dumps(label)
+    html_code = f"""
+    <button id="{btn_id}" style="width:100%;padding:0.5rem 1rem;
+        border-radius:0.5rem;border:1px solid rgba(128,128,128,0.4);
+        background:transparent;color:inherit;cursor:pointer;font-size:14px;
+        height:2.5rem;box-sizing:border-box;font-family:inherit;">{label}</button>
+    <style>
+        body {{ margin:0; color:#31333F; }}
+        @media (prefers-color-scheme: dark) {{ body {{ color:#fafafa; }} }}
+    </style>
+    <script>
+        (function() {{
+            var btn = document.getElementById("{btn_id}");
+            var textToCopy = {js_text};
+            var origLabel = {label_js};
+            function fallbackCopy(t) {{
+                var ta = document.createElement("textarea");
+                ta.value = t;
+                ta.style.position = "fixed";
+                ta.style.opacity = "0";
+                document.body.appendChild(ta);
+                ta.focus(); ta.select();
+                var ok = false;
+                try {{ ok = document.execCommand("copy"); }} catch (e) {{ ok = false; }}
+                document.body.removeChild(ta);
+                return ok;
+            }}
+            function showResult(ok) {{
+                btn.innerText = ok ? "✅ Copied!" : "⚠️ Copy failed";
+                setTimeout(function() {{ btn.innerText = origLabel; }}, 1500);
+            }}
+            btn.addEventListener("click", function() {{
+                if (navigator.clipboard && navigator.clipboard.writeText) {{
+                    navigator.clipboard.writeText(textToCopy)
+                        .then(function() {{ showResult(true); }})
+                        .catch(function() {{ showResult(fallbackCopy(textToCopy)); }});
+                }} else {{
+                    showResult(fallbackCopy(textToCopy));
+                }}
             }});
-        " style="width:100%;padding:0.5rem 1rem;border-radius:0.5rem;
-            border:1px solid var(--color-border-tertiary);
-            background:var(--color-background-primary);
-            color:var(--color-text-primary);cursor:pointer;font-size:14px;
-            margin-top:2px;height:2.5rem;">
-            {label_safe}
-        </button>
-    """, unsafe_allow_html=True)
+        }})();
+    </script>
+    """
+    components.html(html_code, height=48)
 
 def render_item_card(title, pills, detail_line, price_line, warn=False,
                       warn_note=None, footer_note=None, badge_html=""):
