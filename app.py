@@ -17,6 +17,8 @@ SGT = timezone(timedelta(hours=8))
 def now_sgt():
     return datetime.now(SGT)
 
+QUOTE_VALIDITY_DAYS = 7  # how many days a quotation stays valid from date of issue
+
 st.set_page_config(layout="wide", page_title="Timber AI Assistant V32", page_icon="🪵")
 
 # ============================================================
@@ -768,7 +770,7 @@ def save_quote(customer, mobile, total, items, quote_text, cost_total=0, quote_t
         "items": items, "total": total, "cost": cost_total,
         "profit": profit, "margin": margin, "text": quote_text,
         "closed": False, "closed_date": "",
-        "valid_until": (now_sgt() + timedelta(days=30)).strftime("%d %b %Y")
+        "valid_until": (now_sgt() + timedelta(days=QUOTE_VALIDITY_DAYS)).strftime("%d %b %Y")
     }
     history.insert(0, entry)
     history = history[:200]
@@ -776,7 +778,7 @@ def save_quote(customer, mobile, total, items, quote_text, cost_total=0, quote_t
 
 def quote_is_expired(q):
     """True if the quote's validity date has passed. Falls back to
-    date-saved + 30 days for quotes saved before valid_until existed."""
+    date-saved + QUOTE_VALIDITY_DAYS for quotes saved before valid_until existed."""
     valid_until_str = q.get("valid_until", "")
     if not valid_until_str:
         saved_date_str = q.get("date", "")
@@ -786,7 +788,7 @@ def quote_is_expired(q):
             saved_date = datetime.strptime(saved_date_str, "%d %b %Y")
         except ValueError:
             return False
-        valid_until = saved_date + timedelta(days=30)
+        valid_until = saved_date + timedelta(days=QUOTE_VALIDITY_DAYS)
     else:
         try:
             valid_until = datetime.strptime(valid_until_str, "%d %b %Y")
@@ -866,7 +868,7 @@ def calc_from_mm(w_mm, h_mm, ft, rate, nom_w=None, nom_h=None):
 def is_keruing(species):
     return species in ["Mixed Keruing", "Pure Keruing"]
 
-def build_reply(lines, total, is_timber=True, is_plywood=False, extra_note="", valid_days=30):
+def build_reply(lines, total, is_timber=True, is_plywood=False, extra_note="", valid_days=QUOTE_VALIDITY_DAYS):
     """
     Build customer reply text.
     - Total line removed (per-line subtotals are sufficient)
@@ -874,7 +876,7 @@ def build_reply(lines, total, is_timber=True, is_plywood=False, extra_note="", v
         Timber:  Thickness/Width +-1~2mm  |  Length +-25~50mm
         Plywood: Thickness +-0.8~1.2mm
         Mixed:   both sections labelled
-    - Validity date appended at the end (default 30 days from date of issue)
+    - Validity stated as a duration (e.g. "Quote valid : 7 days"), not a fixed end date
     """
     out = list(lines)
     out.append("\nTolerances:")
@@ -896,8 +898,7 @@ def build_reply(lines, total, is_timber=True, is_plywood=False, extra_note="", v
     out.append("\nDelivery / Self Collection:")
     out.append("30 Kranji Loop (Blk A) #04-05")
     out.append("TimMac @ Kranji S739570")
-    valid_until = (now_sgt() + timedelta(days=valid_days)).strftime("%d %b %Y")
-    out.append(f"\nThis quotation is valid until {valid_until}.")
+    out.append(f"\nQuote valid : {valid_days} days")
     return "\n".join(out)
 
 # ============================================================
