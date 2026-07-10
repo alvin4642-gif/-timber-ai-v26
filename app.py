@@ -1321,6 +1321,31 @@ def render_quote_output(prefix, extra_clear_keys=None, save_type=None,
 # AI Parser and Plywood Cut-to-Size removed — built as separate apps
 # ============================================================
 
+if "expiry_banner_checked" not in st.session_state:
+    _banner_history = load_history()
+    _cutoff = now_sgt().replace(tzinfo=None) - timedelta(days=7)
+    _recent_expired = 0
+    for _q in _banner_history:
+        if _q.get("closed", False):
+            continue
+        if not quote_is_expired(_q):
+            continue
+        _vu_str = _q.get("valid_until", "")
+        try:
+            _vu = datetime.strptime(_vu_str, "%d %b %Y") if _vu_str else None
+        except ValueError:
+            _vu = None
+        # Only count quotes that expired recently (within the last 7 days),
+        # not every stale quote from months ago — this is a "new this week" notice.
+        if _vu is not None and _vu >= _cutoff:
+            _recent_expired += 1
+    st.session_state.expiry_banner_count = _recent_expired
+    st.session_state.expiry_banner_checked = True
+
+if st.session_state.get("expiry_banner_count", 0) > 0:
+    _n = st.session_state.expiry_banner_count
+    st.warning(f"⏰ {_n} quote{'s' if _n != 1 else ''} expired this week — check the History tab to follow up.")
+
 tab_quote, tab_odd, tab_ply, tab_combined, tab_sup, tab_hist = st.tabs([
     "📋 Quote Builder", "📐 Odd Size", "🪵 Plywood", "🔀 Combined",
     "🏭 Suppliers", "🕘 History"
@@ -2476,7 +2501,10 @@ with tab_hist:
         with hs2: search_btn =st.form_submit_button("🔍 Search", use_container_width=True,type="primary")
         with hs3: refresh_btn=st.form_submit_button("🔄 Refresh",use_container_width=True)
 
-    if refresh_btn: st.session_state.hist_search_val=""; st.rerun()
+    if refresh_btn:
+        st.session_state.hist_search_val=""
+        st.session_state.expiry_banner_checked = False
+        st.rerun()
     elif search_btn: st.session_state.hist_search_val=search
 
     with st.spinner("Loading history from cloud..."):
@@ -2572,7 +2600,9 @@ with tab_hist:
                                       disabled=True, use_container_width=True)
                         else:
                             if st.button("✅ Mark closed", key=f"markclosed_{i}_{qid}", use_container_width=True):
-                                if mark_quote_closed(qid): st.success("Marked as closed."); st.rerun()
+                                if mark_quote_closed(qid):
+                                    st.session_state.expiry_banner_checked = False
+                                    st.success("Marked as closed."); st.rerun()
                                 else: st.error("Could not update — try refreshing.")
                     with hb3:
                         if st.button("🗑️ Delete",key=f"dh_{i}_{qid}",use_container_width=True):
