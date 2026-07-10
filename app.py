@@ -1237,9 +1237,19 @@ def clipboard_copy_button(text, key, label="📋 Copy as TXT"):
     download, so staff can paste straight into WhatsApp/email."""
     btn_id = f"copybtn_{key}"
     js_text = json.dumps(text)
+    # HTML-escape so embedded quotes (e.g. 3" x 3") don't prematurely close
+    # the onclick="..." attribute, and escape $ so Streamlit's markdown
+    # doesn't mistake "S$xxx...S$yyy" pairs for LaTeX math.
+    js_text_safe = (js_text
+        .replace("&", "&amp;")
+        .replace('"', "&quot;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("$", "&#36;"))
+    label_safe = label.replace("$", "&#36;")
     st.markdown(f"""
         <button id="{btn_id}" onclick="
-            navigator.clipboard.writeText({js_text}).then(function() {{
+            navigator.clipboard.writeText({js_text_safe}).then(function() {{
                 var b = document.getElementById('{btn_id}');
                 var orig = b.innerText;
                 b.innerText = '✅ Copied!';
@@ -1253,7 +1263,7 @@ def clipboard_copy_button(text, key, label="📋 Copy as TXT"):
             background:var(--color-background-primary);
             color:var(--color-text-primary);cursor:pointer;font-size:14px;
             margin-top:2px;height:2.5rem;">
-            {label}
+            {label_safe}
         </button>
     """, unsafe_allow_html=True)
 
