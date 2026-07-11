@@ -850,6 +850,12 @@ def ceil_10cents(x):
     """Round up to nearest 10 cents. e.g. 15.24->15.30, 15.95->16.00"""
     return math.ceil(round(x * 10, 8)) / 10
 
+def cca_combined_price(base_price, cca_on, cca_rate):
+    """Single source of truth for merging the CCA surcharge into a unit
+    price. If a CCA-style pricing rule ever changes, this is the one place
+    to update it — used everywhere the surcharge is applied."""
+    return ceil_10cents(base_price + cca_rate) if cca_on else base_price
+
 def calc_from_mm(w_mm, h_mm, ft, rate, nom_w=None, nom_h=None):
     """
     Pricing always uses 7200 / nom_w / nom_h / ft.
@@ -1563,7 +1569,7 @@ with tab_quote:
                 )
                 _item_cca = item.get("cca", False)
                 # Combined price = timber price/pc + CCA rate/pc (if CCA on)
-                _combined_price = ceil_10cents(locked_price + cca_rate) if _item_cca else locked_price
+                _combined_price = cca_combined_price(locked_price, _item_cca, cca_rate)
                 gt = round(_combined_price * item["qty"], 2)
                 grand_total += gt
                 cost_est = round(gt * 0.85, 2); cost_total += cost_est
@@ -2052,7 +2058,7 @@ with tab_odd:
             odd_log=[]; odd_total=0; odd_cost=0
             for item in st.session_state.odd_items:
                 _odd_item_cca = item.get("cca", False)
-                _odd_combined_price = ceil_10cents(item["price"] + cca_rate) if _odd_item_cca else item["price"]
+                _odd_combined_price = cca_combined_price(item["price"], _odd_item_cca, cca_rate)
                 _odd_line_total = round(_odd_combined_price * item["qty"], 2)
                 odd_total+=_odd_line_total
                 cost_est=round(_odd_line_total*0.85,2); odd_cost+=cost_est
@@ -2107,7 +2113,7 @@ with tab_odd:
                 for _it in _items:
                     if _it.get("cca"):
                         _odd_has_cca = True
-                        _combined_odd = ceil_10cents(_it["price"] + cca_rate)
+                        _combined_odd = cca_combined_price(_it["price"], True, cca_rate)
                         _cca_line_total = round(_combined_odd * _it["qty"], 2)
                         odd_reply.append(
                             f"{_sp} timber {_dt.lower()} treated with anti-termite / insect borer treatment ({cca_colour})\n"
@@ -2321,13 +2327,11 @@ with tab_ply:
                         if _ply_item_cca else ""
                     )
                     _ply_log_rows = {"Cost (YC)":f"S${item['cost']}/sheet","Selling (plywood)":f"S${_sell_r:.2f}/sheet (rounded up to nearest 10 cents)"}
+                    _combined_ply = cca_combined_price(_sell_r, _ply_item_cca, cca_rate)
+                    _ply_line_total = round(_combined_ply * item["actual_qty"], 2)
                     if _ply_item_cca:
-                        _combined_ply = ceil_10cents(_sell_r + cca_rate)
-                        _ply_line_total = round(_combined_ply * item["actual_qty"], 2)
                         _ply_log_rows["CCA rate/sheet"]       = f"+ S${cca_rate:.2f} ({cca_colour})"
                         _ply_log_rows["Combined price/sheet"] = f"S${_combined_ply:.2f}"
-                    else:
-                        _ply_line_total = round(_sell_r * item["actual_qty"], 2)
                     _ply_log_rows["Qty"]        = f"{item['actual_qty']} sheets"
                     _ply_log_rows["Line total"] = f"S${_ply_line_total:,.2f}"
                     ply_log.append({
@@ -2411,7 +2415,7 @@ with tab_combined:
                         item.get("nom_w"), item.get("nom_h")
                     )
                     _item_cca = item.get("cca", False)
-                    _combined_price = ceil_10cents(locked_price + cca_rate) if _item_cca else locked_price
+                    _combined_price = cca_combined_price(locked_price, _item_cca, cca_rate)
                     gt = round(_combined_price * item["qty"], 2)
                     combined_total += gt
                     cost_est = round(gt * 0.85, 2); combined_cost += cost_est
@@ -2474,14 +2478,12 @@ with tab_combined:
                     )
                     _ply_log_rows = {"Cost (YC)": f"S${item['cost']}/sheet",
                                       "Selling (plywood)": f"S${_sell_r:.2f}/sheet (rounded up to nearest 10 cents)"}
+                    _combined_ply = cca_combined_price(_sell_r, _ply_item_cca, cca_rate)
+                    _ply_line_total = round(_combined_ply * item["actual_qty"], 2)
                     if _ply_item_cca:
                         has_cca = True
-                        _combined_ply = ceil_10cents(_sell_r + cca_rate)
-                        _ply_line_total = round(_combined_ply * item["actual_qty"], 2)
                         _ply_log_rows["CCA rate/sheet"] = f"+ S${cca_rate:.2f} ({cca_colour})"
                         _ply_log_rows["Combined price/sheet"] = f"S${_combined_ply:.2f}"
-                    else:
-                        _ply_line_total = round(_sell_r * item["actual_qty"], 2)
                     _ply_log_rows["Qty"] = f"{item['actual_qty']} sheets"
                     _ply_log_rows["Line total"] = f"S${_ply_line_total:,.2f}"
                     combined_total += _ply_line_total
