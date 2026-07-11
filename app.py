@@ -19,7 +19,7 @@ def now_sgt():
 
 QUOTE_VALIDITY_DAYS = 7  # how many days a quotation stays valid from date of issue
 
-st.set_page_config(layout="wide", page_title="Timber AI Assistant V32", page_icon="🪵")
+st.set_page_config(layout="wide", page_title="Timber AI Assistant V33", page_icon="🪵")
 
 # ============================================================
 # CSS
@@ -554,7 +554,7 @@ def reset_all():
 st.markdown("""
 <div class="app-header">
   <div class="app-header-title">🪵 Timber AI Assistant
-    <span style="background:#1D9E75;color:white;font-size:13px;padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle">V32</span>
+    <span style="background:#1D9E75;color:white;font-size:13px;padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle">V33</span>
   </div>
   <div class="app-header-sub">Professional Quoting System &nbsp;·&nbsp; Prices in SGD</div>
 </div>
@@ -855,6 +855,18 @@ def cca_combined_price(base_price, cca_on, cca_rate):
     price. If a CCA-style pricing rule ever changes, this is the one place
     to update it — used everywhere the surcharge is applied."""
     return ceil_10cents(base_price + cca_rate) if cca_on else base_price
+
+def price_line_with_cca(base_price, cca_on, cca_rate, qty, unit="pc", unit_plural=None):
+    """Builds an item card's price line, showing the CCA breakdown (base +
+    surcharge = combined) whenever CCA is on, so the live card always
+    matches what the generated quote will say."""
+    unit_plural = unit_plural or (unit + "s")
+    combined = cca_combined_price(base_price, cca_on, cca_rate)
+    total = round(combined * qty, 2)
+    if cca_on:
+        return (f'S${base_price}/{unit} + S${cca_rate:.2f} CCA = <b>S${combined}</b>/{unit} '
+                f'× {qty} {unit_plural} = <b>S${total:,.2f}</b>')
+    return f'S${base_price}/{unit} × {qty} {unit_plural} = <b>S${total:,.2f}</b>'
 
 def calc_from_mm(w_mm, h_mm, ft, rate, nom_w=None, nom_h=None):
     """
@@ -1215,7 +1227,7 @@ def parsed_to_odd_item(p, species_rate_map):
     }
 
 # ============================================================
-# SHARED UI HELPERS (V32) — used by Quote Builder / Odd Size /
+# SHARED UI HELPERS (V33) — used by Quote Builder / Odd Size /
 # Plywood tabs to avoid triplicated card/pricing/output code.
 # ============================================================
 
@@ -1359,14 +1371,9 @@ def render_quote_output(prefix, extra_clear_keys=None, save_type=None,
     st.subheader("Customer Reply (edit before sending)")
     edited = st.text_area("", ss[f"{prefix}_reply"], height=reply_height, key=f"cust_reply_{prefix}")
 
-    n_cols = 1 + (1 if save_type else 0) + (1 if show_copy else 0) + (1 if show_clear else 0)
-    cols = st.columns(n_cols)
-    _fp = file_prefix or "quote"
-    with cols[0]:
-        st.download_button("📥 Download TXT", data=edited,
-            file_name=f"{_fp}_{now_sgt().strftime('%Y%m%d_%H%M%S')}.txt",
-            mime="text/plain", use_container_width=True, key=f"dl_{prefix}")
-    col_i = 1
+    n_cols = (1 if save_type else 0) + (1 if show_copy else 0) + (1 if show_clear else 0)
+    cols = st.columns(max(n_cols, 1))
+    col_i = 0
     if save_type:
         with cols[col_i]:
             if st.button("💾 Save to History", type="primary", use_container_width=True, key=f"save_{prefix}"):
@@ -1529,7 +1536,7 @@ with tab_quote:
                 title=f'{item["species"]} · {item["size"]}',
                 pills=[f"@S${locked_rate:,}/ton"],
                 detail_line=None,
-                price_line=f'S${locked_price}/pc × {item["qty"]} pcs = <b>S${locked_total:,.2f}</b>',
+                price_line=price_line_with_cca(locked_price, _cca_on, cca_rate, item["qty"]),
                 warn=mixed_rates,
                 warn_note=f'Different rate from other {item["species"]} items' if mixed_rates else None,
                 badge_html=cca_badge_html(_cca_on),
@@ -1998,7 +2005,7 @@ with tab_odd:
                         item.get("dim_type", "Sawn").lower(),
                     ],
                     detail_line=f'Customer: {item["cust_size"]} → Priced as: {item["quote_size"]}',
-                    price_line=f'S${item["price"]}/pc × {item["qty"]} pcs = <b>S${item["line_total"]:,.2f}</b>',
+                    price_line=price_line_with_cca(item["price"], _odd_cca_on, cca_rate, item["qty"]),
                     warn=_mixed,
                     warn_note=f'Different rate from other {item["species"]} items in this quote' if _mixed else None,
                     footer_note=f'{_pcs_floor} pcs/ton',
@@ -2276,12 +2283,13 @@ with tab_ply:
                 if item["moq_flag"]:
                     _ply_pills.append("⚠️ MOQ")
 
+                _ply_sell_r = item.get("sell_rounded", ceil_10cents(item["sell"]))
                 render_item_card(
                     title=item['grade'],
                     pills=_ply_pills,
                     detail_line=f"Profit: S${_ply_profit_total:,.2f}",
-                    price_line=(f'S${item["sell"]}/sheet × {item["actual_qty"]} sheets = '
-                                f'<b>S${item["line_total"]:,.2f}</b>'),
+                    price_line=price_line_with_cca(_ply_sell_r, _ply_cca_on, cca_rate,
+                                                    item["actual_qty"], unit="sheet"),
                     badge_html=cca_badge_html(_ply_cca_on),
                 )
                 pc1, pc2, pc3 = st.columns([9, 1, 1])
@@ -2675,9 +2683,7 @@ with tab_hist:
                     st.text_area("Full quote",value=text,height=300,key=f"qt_{i}_{qid}")
                     hb1,hb2,hb3=st.columns(3)
                     with hb1:
-                        st.download_button("📥 Download TXT",data=text,
-                            file_name=f"quote_{date}_{name}.txt".replace(" ","_"),
-                            mime="text/plain",key=f"dl_{i}_{qid}",use_container_width=True)
+                        clipboard_copy_button(text, key=f"hist_{i}_{qid}")
                     with hb2:
                         if is_closed:
                             st.button(f"✅ Closed on {closed_date}", key=f"closed_{i}_{qid}",
@@ -2696,4 +2702,4 @@ with tab_hist:
 # FOOTER
 # ============================================================
 st.markdown("---")
-st.caption("Timber AI Assistant V32  · ALVIN  ")
+st.caption("Timber AI Assistant V33  · ALVIN  ")
