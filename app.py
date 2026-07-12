@@ -2682,7 +2682,7 @@ with tab_hist:
                 type_icon={"Odd Size":"📐","Combined":"🔀"}.get(qtype,"📄")
                 status_badge = ""
                 if is_closed: status_badge = f" &nbsp;✅ Closed {closed_date}"
-                elif is_expired: status_badge = " &nbsp;⏰ Expired"
+                elif is_expired: status_badge = " &nbsp;:orange-background[⏰ Expired]"
                 label=f"{type_icon} [{qtype}]  {date} {time}  ·  {name}  ·  {mobile}  ·  SGD {total:,.2f}  ·  Profit SGD {profit:,.2f}  ({margin}%){status_badge}"
                 with st.expander(label):
                     st.text_area("Full quote",value=text,height=300,key=f"qt_{i}_{qid}")
