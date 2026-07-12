@@ -859,12 +859,17 @@ def cca_combined_price(base_price, cca_on, cca_rate):
 def price_line_with_cca(base_price, cca_on, cca_rate, qty, unit="pc", unit_plural=None):
     """Builds an item card's price line, showing the CCA breakdown (base +
     surcharge = combined) whenever CCA is on, so the live card always
-    matches what the generated quote will say."""
+    matches what the generated quote will say. The surcharge is highlighted
+    in green so it's easy to spot at a glance."""
     unit_plural = unit_plural or (unit + "s")
     combined = cca_combined_price(base_price, cca_on, cca_rate)
     total = round(combined * qty, 2)
     if cca_on:
-        return (f'S${base_price}/{unit} + S${cca_rate:.2f} CCA = <b>S${combined}</b>/{unit} '
+        cca_highlight = (
+            f'<span style="background:#CCFF66;color:#1a1a1a;padding:0 4px;'
+            f'border-radius:2px">S${cca_rate:.2f} CCA</span>'
+        )
+        return (f'S${base_price}/{unit} + {cca_highlight} = <b>S${combined}</b>/{unit} '
                 f'× {qty} {unit_plural} = <b>S${total:,.2f}</b>')
     return f'S${base_price}/{unit} × {qty} {unit_plural} = <b>S${total:,.2f}</b>'
 
