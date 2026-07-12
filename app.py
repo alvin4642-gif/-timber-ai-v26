@@ -2681,7 +2681,7 @@ with tab_hist:
                 is_expired = quote_is_expired(q) and not is_closed
                 type_icon={"Odd Size":"📐","Combined":"🔀"}.get(qtype,"📄")
                 status_badge = ""
-                if is_closed: status_badge = f" &nbsp;✅ Closed {closed_date}"
+                if is_closed: status_badge = f" &nbsp;:violet-background[✅ Closed {closed_date}]"
                 elif is_expired: status_badge = " &nbsp;:orange-background[⏰ Expired]"
                 label=f"{type_icon} [{qtype}]  {date} {time}  ·  {name}  ·  {mobile}  ·  SGD {total:,.2f}  ·  Profit SGD {profit:,.2f}  ({margin}%){status_badge}"
                 with st.expander(label):
