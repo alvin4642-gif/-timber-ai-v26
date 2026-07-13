@@ -1439,18 +1439,15 @@ if st.session_state.get("expiry_banner_count", 0) > 0:
     _n = st.session_state.expiry_banner_count
     st.warning(f"⏰ {_n} quote{'s' if _n != 1 else ''} expired this week — check the History tab to follow up.")
 
-tab_quote, tab_odd, tab_ply, tab_combined, tab_sup, tab_hist = st.tabs([
-    "📋 Quote Builder", "📐 Odd Size", "🪵 Plywood", "🔀 Combined",
-    "🏭 Suppliers", "🕘 History"
-])
-
-# ============================================================
-# TAB 1 — QUOTE BUILDER
-# ============================================================
-with tab_quote:
+def render_customer_section(key_prefix):
+    """Quick repeat customer search + Customer Details fields. Shared by
+    QB and Plywood (Odd Size keeps its own simpler fields, no search box,
+    per its existing design) so name/mobile stay in sync across tabs.
+    key_prefix keeps each tab's widget keys unique — Streamlit renders
+    every tab's content on every script run, not just the visible one."""
     st.markdown("#### Quick repeat customer")
     qrc_query = st.text_input("Search by name or mobile", value=st.session_state.qrc_search,
-        placeholder="e.g. Tan or 9123", key="qrc_search_inp", label_visibility="collapsed")
+        placeholder="e.g. Tan or 9123", key=f"qrc_search_inp_{key_prefix}", label_visibility="collapsed")
     st.session_state.qrc_search = qrc_query
     if qrc_query.strip():
         _matches = find_recent_customers(qrc_query, limit=5)
@@ -1463,7 +1460,7 @@ with tab_quote:
                                 f'{_m["mobile"]} · last quote {_m["date"]}</span></div>', unsafe_allow_html=True)
                 with _mc2:
                     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                    if st.button("Use", key=f"qrc_use_{_m['name']}_{_m['mobile']}", use_container_width=True):
+                    if st.button("Use", key=f"qrc_use_{key_prefix}_{_m['name']}_{_m['mobile']}", use_container_width=True):
                         st.session_state.cust_name = _m["name"]
                         st.session_state.cust_mobile = _m["mobile"]
                         st.session_state.cust_form_key += 1
@@ -1477,14 +1474,27 @@ with tab_quote:
     with cd1:
         cust_name = st.text_input("Customer Name / Company",
             value=st.session_state.cust_name,
-            placeholder="e.g. ABC Construction Pte Ltd", key=f"cust_name_inp_{st.session_state.cust_form_key}")
+            placeholder="e.g. ABC Construction Pte Ltd",
+            key=f"cust_name_inp_{key_prefix}_{st.session_state.cust_form_key}")
         st.session_state.cust_name = cust_name
     with cd2:
         cust_mobile = st.text_input("Mobile Number",
             value=st.session_state.cust_mobile,
-            placeholder="e.g. 9123 4567", key=f"cust_mobile_inp_{st.session_state.cust_form_key}")
+            placeholder="e.g. 9123 4567",
+            key=f"cust_mobile_inp_{key_prefix}_{st.session_state.cust_form_key}")
         st.session_state.cust_mobile = cust_mobile
     st.divider()
+
+tab_quote, tab_odd, tab_ply, tab_combined, tab_sup, tab_hist = st.tabs([
+    "📋 Quote Builder", "📐 Odd Size", "🪵 Plywood", "🔀 Combined",
+    "🏭 Suppliers", "🕘 History"
+])
+
+# ============================================================
+# TAB 1 — QUOTE BUILDER
+# ============================================================
+with tab_quote:
+    render_customer_section("qb")
     st.subheader("Add Timber Item")
     st.caption("Select species, size and length from dropdowns. Rates above update price automatically.")
 
@@ -2196,6 +2206,7 @@ with tab_ply:
                 render_table(tbl_rows)
 
         st.divider()
+        render_customer_section("ply")
         st.subheader("Add Plywood to Order")
         if "ply_cur_grade" not in st.session_state:
             st.session_state.ply_cur_grade = st.session_state.sel_grade
