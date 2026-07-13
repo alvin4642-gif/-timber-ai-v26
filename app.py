@@ -756,10 +756,11 @@ def effective_ply_cost(grade, thk):
 if "ply_cost_overrides" not in st.session_state:
     st.session_state.ply_cost_overrides = load_ply_cost_overrides()
 
-def save_quote(customer, mobile, total, items, quote_text, cost_total=0, quote_type="Quote"):
+def save_quote(customer, mobile, total, items, quote_text, cost_total=0, quote_type="Quote", valid_days=None):
     history = load_history()
     profit  = round(total - cost_total, 2)
     margin  = round((profit / total * 100), 1) if total > 0 else 0
+    _valid_days = valid_days if valid_days is not None else QUOTE_VALIDITY_DAYS
     entry   = {
         "id":       now_sgt().strftime("%Y%m%d_%H%M%S"),
         "date":     now_sgt().strftime("%d %b %Y"),
@@ -770,30 +771,36 @@ def save_quote(customer, mobile, total, items, quote_text, cost_total=0, quote_t
         "items": items, "total": total, "cost": cost_total,
         "profit": profit, "margin": margin, "text": quote_text,
         "closed": False, "closed_date": "",
-        "valid_until": (now_sgt() + timedelta(days=QUOTE_VALIDITY_DAYS)).strftime("%d %b %Y")
+        "valid_until": (now_sgt() + timedelta(days=_valid_days)).strftime("%d %b %Y")
     }
     history.insert(0, entry)
     history = history[:200]
     return save_history(history)
 
-def quote_is_expired(q):
-    """True if the quote's validity date has passed. Falls back to
-    date-saved + QUOTE_VALIDITY_DAYS for quotes saved before valid_until existed."""
+def effective_valid_until(q):
+    """Returns the quote's valid_until as a datetime, falling back to
+    date-saved + QUOTE_VALIDITY_DAYS for quotes saved before valid_until
+    existed. Returns None if neither can be determined."""
     valid_until_str = q.get("valid_until", "")
     if not valid_until_str:
         saved_date_str = q.get("date", "")
         if not saved_date_str:
-            return False
+            return None
         try:
             saved_date = datetime.strptime(saved_date_str, "%d %b %Y")
         except ValueError:
-            return False
-        valid_until = saved_date + timedelta(days=QUOTE_VALIDITY_DAYS)
-    else:
-        try:
-            valid_until = datetime.strptime(valid_until_str, "%d %b %Y")
-        except ValueError:
-            return False
+            return None
+        return saved_date + timedelta(days=QUOTE_VALIDITY_DAYS)
+    try:
+        return datetime.strptime(valid_until_str, "%d %b %Y")
+    except ValueError:
+        return None
+
+def quote_is_expired(q):
+    """True if the quote's validity date has passed."""
+    valid_until = effective_valid_until(q)
+    if valid_until is None:
+        return False
     return now_sgt().replace(tzinfo=None) > valid_until
 
 def mark_quote_closed(qid):
@@ -1383,7 +1390,8 @@ def render_quote_output(prefix, extra_clear_keys=None, save_type=None,
         with cols[col_i]:
             if st.button("💾 Save to History", type="primary", use_container_width=True, key=f"save_{prefix}"):
                 ok = save_quote(ss.cust_name, ss.cust_mobile, grand_total,
-                    ss[f"{prefix}_nitem"], edited, cost_total, quote_type=save_type)
+                    ss[f"{prefix}_nitem"], edited, cost_total, quote_type=save_type,
+                    valid_days=ss.get(f"{prefix}_valid_days", QUOTE_VALIDITY_DAYS))
                 if ok: st.success("✅ Saved!")
                 else:  st.error("❌ Could not save.")
         col_i += 1
@@ -1560,6 +1568,8 @@ with tab_quote:
                     st.rerun()
 
         st.divider()
+        q_valid_days = st.slider("Quote validity (days)", min_value=1, max_value=30,
+            value=st.session_state.get("q_valid_days", QUOTE_VALIDITY_DAYS), key="q_valid_days")
         cg1, cg2, cg3 = st.columns([2, 1, 1])
         with cg1: gen_quote = st.button("GENERATE QUOTE", type="primary", use_container_width=True)
         with cg2:
@@ -1624,7 +1634,7 @@ with tab_quote:
                     )
             grand_total = round(grand_total, 2); cost_total = round(cost_total, 2)
             _cca_note = "\n\nNote: After treatment, timber/plywood may be wet and may have some powder when dried." if _has_cca else ""
-            reply_text = build_reply(customer_reply, grand_total, is_timber=True, is_plywood=False, extra_note=_cca_note)
+            reply_text = build_reply(customer_reply, grand_total, is_timber=True, is_plywood=False, extra_note=_cca_note, valid_days=q_valid_days)
             st.session_state.q_ready = True; st.session_state.q_reply  = reply_text
             st.session_state.q_total = grand_total; st.session_state.q_cost   = cost_total
             st.session_state.q_nitem = len(customer_reply); st.session_state.q_log = log_items
@@ -2060,6 +2070,8 @@ with tab_odd:
             unsafe_allow_html=True
         )
         st.divider()
+        odd_valid_days = st.slider("Quote validity (days)", min_value=1, max_value=30,
+            value=st.session_state.get("odd_valid_days", QUOTE_VALIDITY_DAYS), key="odd_valid_days")
         og1, og2 = st.columns([2, 1])
         with og1: gen_odd = st.button("GENERATE ODD SIZE QUOTE", type="primary", use_container_width=True)
         with og2:
@@ -2137,7 +2149,7 @@ with tab_odd:
                             f"@ S${_it['price']}/pcs x {_it['qty']} = S${_it['line_total']:,.2f}"
                         )
             _odd_cca_note = "\n\nNote: After treatment, timber/plywood may be wet and may have some powder when dried." if _odd_has_cca else ""
-            reply_text=build_reply(odd_reply,odd_total,is_timber=True,is_plywood=False,extra_note=_odd_cca_note)
+            reply_text=build_reply(odd_reply,odd_total,is_timber=True,is_plywood=False,extra_note=_odd_cca_note,valid_days=odd_valid_days)
             st.session_state.odd_ready=True; st.session_state.odd_reply=reply_text
             st.session_state.odd_total=odd_total; st.session_state.odd_cost=odd_cost
             st.session_state.odd_nitem=len(odd_reply); st.session_state.odd_log=odd_log
@@ -2320,6 +2332,8 @@ with tab_ply:
             with pm3: st.metric("Profit",f"S${ply_profit:,.2f}")
             with pm4: st.metric("Margin",f"{ply_margin}%")
 
+            ply_valid_days = st.slider("Quote validity (days)", min_value=1, max_value=30,
+                value=st.session_state.get("ply_valid_days", QUOTE_VALIDITY_DAYS), key="ply_valid_days")
             pg1,pg2=st.columns([2,1])
             with pg1: gen_ply=st.button("GENERATE PLYWOOD QUOTE",type="primary",use_container_width=True)
             with pg2:
@@ -2368,7 +2382,7 @@ with tab_ply:
                 fr_note="\n* Note (Fire Retardant): Plywood may/will be wet & may/will have some powder when dried." if has_fr else ""
                 _cca_ply_note = ("\n\nNote: After treatment, timber/plywood may be wet and may have some powder when dried." if _ply_has_cca else "")
                 _combined_note = fr_note + _cca_ply_note
-                reply_txt=build_reply(ply_reply,_ply_grand_with_cca,is_timber=False,is_plywood=True,extra_note=_combined_note)
+                reply_txt=build_reply(ply_reply,_ply_grand_with_cca,is_timber=False,is_plywood=True,extra_note=_combined_note,valid_days=ply_valid_days)
                 st.session_state.ply_ready=True; st.session_state.ply_reply=reply_txt
                 st.session_state.ply_total=_ply_grand_with_cca; st.session_state.ply_cost=ply_cost_total
                 st.session_state.ply_nitem=len(ply_reply); st.session_state.ply_log=ply_log
@@ -2412,6 +2426,8 @@ with tab_combined:
     if n_timber == 0 and n_ply == 0:
         st.info("Add items in the Quote Builder and/or Plywood tab first, then come back here to combine them.")
     else:
+        comb_valid_days = st.slider("Quote validity (days)", min_value=1, max_value=30,
+            value=st.session_state.get("comb_valid_days", QUOTE_VALIDITY_DAYS), key="comb_valid_days")
         if st.button("GENERATE COMBINED QUOTE", type="primary", use_container_width=True):
             combined_log = []; combined_reply = []
             combined_total = 0; combined_cost = 0
@@ -2526,7 +2542,8 @@ with tab_combined:
                 combined_reply, combined_total,
                 is_timber=bool(st.session_state.order_items),
                 is_plywood=bool(st.session_state.ply_items),
-                extra_note=fr_note + cca_note
+                extra_note=fr_note + cca_note,
+                valid_days=comb_valid_days
             )
             st.session_state.comb_ready = True; st.session_state.comb_reply = reply_text
             st.session_state.comb_total = combined_total; st.session_state.comb_cost = combined_cost
@@ -2682,7 +2699,10 @@ with tab_hist:
                 type_icon={"Odd Size":"📐","Combined":"🔀"}.get(qtype,"📄")
                 status_badge = ""
                 if is_closed: status_badge = f" &nbsp;:violet-background[✅ Closed {closed_date}]"
-                elif is_expired: status_badge = " &nbsp;:orange-background[⏰ Expired]"
+                elif is_expired:
+                    _vu = effective_valid_until(q)
+                    _vu_disp = _vu.strftime("%d %b %Y") if _vu else "?"
+                    status_badge = f" &nbsp;:orange-background[⏰ Expired (valid until {_vu_disp})]"
                 label=f"{type_icon} [{qtype}]  {date} {time}  ·  {name}  ·  {mobile}  ·  SGD {total:,.2f}  ·  Profit SGD {profit:,.2f}  ({margin}%){status_badge}"
                 with st.expander(label):
                     st.text_area("Full quote",value=text,height=300,key=f"qt_{i}_{qid}")
