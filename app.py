@@ -2703,6 +2703,13 @@ with tab_hist:
                     _vu = effective_valid_until(q)
                     _vu_disp = _vu.strftime("%d %b %Y") if _vu else "?"
                     status_badge = f" &nbsp;:orange-background[⏰ Expired (valid until {_vu_disp})]"
+                else:
+                    _vu = effective_valid_until(q)
+                    if _vu:
+                        _days_left = (_vu.date() - now_sgt().date()).days
+                        _days_word = "day" if _days_left == 1 else "days"
+                        status_badge = (f" &nbsp;:blue-background[Valid until "
+                                        f"{_vu.strftime('%d %b %Y')} ({_days_left} {_days_word} left)]")
                 label=f"{type_icon} [{qtype}]  {date} {time}  ·  {name}  ·  {mobile}  ·  SGD {total:,.2f}  ·  Profit SGD {profit:,.2f}  ({margin}%){status_badge}"
                 with st.expander(label):
                     st.text_area("Full quote",value=text,height=300,key=f"qt_{i}_{qid}")
