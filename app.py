@@ -968,11 +968,13 @@ def parse_dimension_string(raw):
     """Parse a free-text dimension string into (thk_mm, wid_mm, len_mm).
 
     Handles mixed units per token — each number evaluated independently:
-      - suffix 'in', 'IN', or '"'  → value × 25  (trade: 1" = 25mm)
+      - suffix 'in', 'IN', or '"'  → value × 25   (trade: 1" = 25mm)
+      - suffix 'ft', 'FT', or "'"  → value × 300  (trade: 1' = 12" = 300mm)
       - suffix 'mm', 'MM' or none  → value as mm
     Examples:
       10inx8inx1600mm  →  t=250, w=200, l=1600
       10"x8"x20"       →  t=250, w=200, l=500
+      8"x4"x14'        →  t=100, w=200, l=4200  (14ft → 4.2m)
       200x400x1600     →  t=200, w=400, l=1600
     Returns dict with keys 't','w','l' (floats in mm), or None on failure.
     """
@@ -986,24 +988,26 @@ def parse_dimension_string(raw):
         return v
 
     # Extract tokens: each token is (number, unit_suffix)
-    # Pattern: optional label (T/W/L), number, optional unit (in/mm/")
+    # Pattern: optional label (T/W/L), number, optional unit (in/ft/mm/"/')
     token_re = re.compile(
         r'(?:[TWL]\s*)?'          # optional label prefix
         r'(\d+(?:\.\d+)?)'        # number
         r'\s*'
-        r'(in|IN|mm|MM|"|\')?',   # optional unit suffix
+        r'(in|IN|ft|FT|mm|MM|"|\')?',   # optional unit suffix
         re.IGNORECASE
     )
 
     tokens = []
     for m in token_re.finditer(raw):
         num = m.group(1)
-        unit = (m.group(2) or '').strip().upper().replace("'", '"')
+        unit = (m.group(2) or '').strip().upper()
         if not num:
             continue
         v = float(num)
         if unit in ('IN', '"'):
-            v = round(v * 25, 1)   # trade: 1" = 25mm
+            v = round(v * 25, 1)    # trade: 1" = 25mm
+        elif unit in ('FT', "'"):
+            v = round(v * 300, 1)   # trade: 1' = 12" = 300mm
         # mm or no suffix → keep as mm
         tokens.append(v)
 
