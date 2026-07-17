@@ -19,6 +19,46 @@ def now_sgt():
 
 QUOTE_VALIDITY_DAYS = 7  # how many days a quotation stays valid from date of issue
 
+EXPIRING_SOON_WORKING_DAYS = 3  # flag quotes expiring within this many working days
+
+# Singapore public holidays 2026 (11 gazetted + in-lieu Mondays for the
+# 3 that fall on a Sunday). Update this list every year — MOM publishes
+# the following year's dates around mid-year.
+SG_PUBLIC_HOLIDAYS_2026 = {
+    "2026-01-01",  # New Year's Day
+    "2026-02-17",  # Chinese New Year Day 1
+    "2026-02-18",  # Chinese New Year Day 2
+    "2026-03-21",  # Hari Raya Puasa (subject to moon-sighting confirmation)
+    "2026-04-03",  # Good Friday
+    "2026-05-01",  # Labour Day
+    "2026-05-27",  # Hari Raya Haji (subject to moon-sighting confirmation)
+    "2026-05-31",  # Vesak Day (falls on a Sunday)
+    "2026-06-01",  # Vesak Day (in lieu)
+    "2026-08-09",  # National Day (falls on a Sunday)
+    "2026-08-10",  # National Day (in lieu)
+    "2026-11-08",  # Deepavali (falls on a Sunday)
+    "2026-11-09",  # Deepavali (in lieu)
+    "2026-12-25",  # Christmas Day
+}
+
+def is_working_day(date_obj):
+    """True if date_obj (a date, not datetime) is a Mon-Fri that isn't
+    an SG public holiday."""
+    if date_obj.weekday() >= 5:  # 5=Sat, 6=Sun
+        return False
+    return date_obj.strftime("%Y-%m-%d") not in SG_PUBLIC_HOLIDAYS_2026
+
+def add_working_days(start_date, n):
+    """Returns the date that is n working days after start_date,
+    skipping weekends and SG public holidays."""
+    d = start_date
+    counted = 0
+    while counted < n:
+        d += timedelta(days=1)
+        if is_working_day(d):
+            counted += 1
+    return d
+
 st.set_page_config(layout="wide", page_title="Timber AI Assistant V33", page_icon="🪵")
 
 # ============================================================
@@ -1443,6 +1483,26 @@ if st.session_state.get("expiry_banner_count", 0) > 0:
     _n = st.session_state.expiry_banner_count
     st.warning(f"⏰ {_n} quote{'s' if _n != 1 else ''} expired this week — check the History tab to follow up.")
 
+if "expiring_soon_checked" not in st.session_state:
+    _soon_history = load_history()
+    _today = now_sgt().date()
+    _soon_cutoff = add_working_days(_today, EXPIRING_SOON_WORKING_DAYS)
+    _soon_list = []
+    for _q in _soon_history:
+        if _q.get("closed", False):
+            continue
+        if quote_is_expired(_q):
+            continue
+        _vu = effective_valid_until(_q)
+        if _vu is None:
+            continue
+        if _today <= _vu.date() <= _soon_cutoff:
+            _soon_list.append(_q)
+    _soon_list.sort(key=lambda q: effective_valid_until(q))
+    st.session_state.expiring_soon_list = _soon_list
+    st.session_state.expiring_soon_count = len(_soon_list)
+    st.session_state.expiring_soon_checked = True
+
 def render_customer_section(key_prefix):
     """Quick repeat customer search + Customer Details fields. Shared by
     QB and Plywood (Odd Size keeps its own simpler fields, no search box,
@@ -1489,9 +1549,13 @@ def render_customer_section(key_prefix):
         st.session_state.cust_mobile = cust_mobile
     st.divider()
 
+_history_tab_label = "🕘 History"
+if st.session_state.get("expiring_soon_count", 0) > 0:
+    _history_tab_label = f"🕘 History ({st.session_state.expiring_soon_count} ⏰)"
+
 tab_quote, tab_odd, tab_ply, tab_combined, tab_sup, tab_hist = st.tabs([
     "📋 Quote Builder", "📐 Odd Size", "🪵 Plywood", "🔀 Combined",
-    "🏭 Suppliers", "🕘 History"
+    "🏭 Suppliers", _history_tab_label
 ])
 
 # ============================================================
@@ -2621,6 +2685,22 @@ with tab_hist:
     st.markdown("#### 🕘 Quote History")
     st.caption("Search by customer name or mobile.")
 
+    _soon_list = st.session_state.get("expiring_soon_list", [])
+    if _soon_list:
+        _soon_lines = []
+        for _q in _soon_list:
+            _vu = effective_valid_until(_q)
+            _days_left = (_vu.date() - now_sgt().date()).days
+            _when = "today" if _days_left == 0 else f"in {_days_left} day{'s' if _days_left != 1 else ''}"
+            _soon_lines.append(
+                f"&nbsp;&nbsp;• {_q.get('customer','—')} — expires {_when} ({_vu.strftime('%d %b %Y')})"
+            )
+        _n_soon = len(_soon_list)
+        st.warning(
+            f"⏰ {_n_soon} quote{'s' if _n_soon != 1 else ''} expiring soon (within "
+            f"{EXPIRING_SOON_WORKING_DAYS} working days)  \n" + "  \n".join(_soon_lines)
+        )
+
     with st.form("hist_search_form",clear_on_submit=False):
         hs1,hs2,hs3=st.columns([4,1,1])
         with hs1:
@@ -2633,6 +2713,7 @@ with tab_hist:
     if refresh_btn:
         st.session_state.hist_search_val=""
         st.session_state.expiry_banner_checked = False
+        st.session_state.expiring_soon_checked = False
         st.rerun()
     elif search_btn: st.session_state.hist_search_val=search
 
@@ -2739,6 +2820,7 @@ with tab_hist:
                             if st.button("✅ Mark closed", key=f"markclosed_{i}_{qid}", use_container_width=True):
                                 if mark_quote_closed(qid):
                                     st.session_state.expiry_banner_checked = False
+                                    st.session_state.expiring_soon_checked = False
                                     st.success("Marked as closed."); st.rerun()
                                 else: st.error("Could not update — try refreshing.")
                     with hb3:
