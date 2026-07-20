@@ -1462,6 +1462,7 @@ if "expiry_banner_checked" not in st.session_state:
     _banner_history = load_history()
     _cutoff = now_sgt().replace(tzinfo=None) - timedelta(days=7)
     _recent_expired = 0
+    _recent_expired_list = []
     for _q in _banner_history:
         if _q.get("closed", False):
             continue
@@ -1476,12 +1477,15 @@ if "expiry_banner_checked" not in st.session_state:
         # not every stale quote from months ago — this is a "new this week" notice.
         if _vu is not None and _vu >= _cutoff:
             _recent_expired += 1
+            _recent_expired_list.append(_q)
+    _recent_expired_list.sort(key=lambda q: effective_valid_until(q))
     st.session_state.expiry_banner_count = _recent_expired
+    st.session_state.expiry_banner_list = _recent_expired_list
     st.session_state.expiry_banner_checked = True
 
 if st.session_state.get("expiry_banner_count", 0) > 0:
     _n = st.session_state.expiry_banner_count
-    st.warning(f"⏰ {_n} quote{'s' if _n != 1 else ''} expired this week — check the History tab to follow up.")
+    st.error(f"❌ {_n} quote{'s' if _n != 1 else ''} expired this week — check the History tab to follow up.")
 
 if "expiring_soon_checked" not in st.session_state:
     _soon_history = load_history()
@@ -1549,9 +1553,15 @@ def render_customer_section(key_prefix):
         st.session_state.cust_mobile = cust_mobile
     st.divider()
 
+_expired_n = st.session_state.get("expiry_banner_count", 0)
+_soon_n = st.session_state.get("expiring_soon_count", 0)
 _history_tab_label = "🕘 History"
-if st.session_state.get("expiring_soon_count", 0) > 0:
-    _history_tab_label = f"🕘 History ({st.session_state.expiring_soon_count} ⏰)"
+if _expired_n > 0 and _soon_n > 0:
+    _history_tab_label = f"🕘 History ({_expired_n} ❌ / {_soon_n} ⏰)"
+elif _expired_n > 0:
+    _history_tab_label = f"🕘 History ({_expired_n} ❌)"
+elif _soon_n > 0:
+    _history_tab_label = f"🕘 History ({_soon_n} ⏰)"
 
 tab_quote, tab_odd, tab_ply, tab_combined, tab_sup, tab_hist = st.tabs([
     "📋 Quote Builder", "📐 Odd Size", "🪵 Plywood", "🔀 Combined",
@@ -2684,6 +2694,20 @@ with tab_sup:
 with tab_hist:
     st.markdown("#### 🕘 Quote History")
     st.caption("Search by customer name or mobile.")
+
+    _expired_list = st.session_state.get("expiry_banner_list", [])
+    if _expired_list:
+        _expired_lines = []
+        for _q in _expired_list:
+            _vu = effective_valid_until(_q)
+            _expired_lines.append(
+                f"&nbsp;&nbsp;• {_q.get('customer','—')} — expired {_vu.strftime('%d %b %Y')}"
+            )
+        _n_expired = len(_expired_list)
+        st.error(
+            f"❌ {_n_expired} quote{'s' if _n_expired != 1 else ''} expired this week — needs follow-up  \n"
+            + "  \n".join(_expired_lines)
+        )
 
     _soon_list = st.session_state.get("expiring_soon_list", [])
     if _soon_list:
