@@ -545,6 +545,7 @@ SPECIES_MAP = {
 # ============================================================
 _defaults = {
     "order_items": [], "odd_items": [], "ply_items": [],
+    "quote_tags": [],
     "cca_colour": "Brown — TimberTone",
     "cca_rate": 5.0,
     "sel_grade":   "MR China",
@@ -812,6 +813,7 @@ def save_quote(customer, mobile, total, items, quote_text, cost_total=0, quote_t
         "items": items, "total": total, "cost": cost_total,
         "profit": profit, "margin": margin, "text": quote_text,
         "closed": False, "closed_date": "",
+        "tags": list(st.session_state.get("quote_tags", [])),
         "valid_until": (now_sgt() + timedelta(days=_valid_days)).strftime("%d %b %Y")
     }
     history.insert(0, entry)
@@ -863,6 +865,36 @@ def tag_option_label(tag_key):
     """Dropdown display label, e.g. 'Source: WhatsApp'."""
     d = QUOTE_TAG_DEFS.get(tag_key, {})
     return f"{d.get('category','')}: {d.get('emoji','')} {d.get('label',tag_key)}"
+
+def tag_pill_label(tag_key):
+    """Short label for a pill button within its own category row, e.g. '💬 WhatsApp'."""
+    d = QUOTE_TAG_DEFS.get(tag_key, {})
+    return f"{d.get('emoji','')} {d.get('label',tag_key)}"
+
+QUOTE_TAG_CATEGORIES = ["Source", "Stage", "Status"]
+
+def tag_keys_for_category(category):
+    return [k for k, d in QUOTE_TAG_DEFS.items() if d["category"] == category]
+
+def render_tag_pills(current_tags, key_prefix):
+    """Renders one row of clickable pill buttons per category (Source/Stage/
+    Status), single-select each. Returns the new combined tags list — does
+    NOT save anything itself, caller decides what to do with the result."""
+    _new_tags = []
+    _pcols = st.columns(3)
+    for _cat, _pcol in zip(QUOTE_TAG_CATEGORIES, _pcols):
+        _cat_keys = tag_keys_for_category(_cat)
+        _cat_current = next((t for t in current_tags if t in _cat_keys), None)
+        with _pcol:
+            st.caption(_cat)
+            _picked = st.pills(
+                _cat, options=_cat_keys, format_func=tag_pill_label,
+                selection_mode="single", default=_cat_current,
+                key=f"pills_{key_prefix}_{_cat}", label_visibility="collapsed",
+            )
+        if _picked:
+            _new_tags.append(_picked)
+    return _new_tags
 
 def tag_badges_markdown(tags):
     """Returns a string of Streamlit colored-background badges for the given tag keys."""
@@ -1595,6 +1627,9 @@ def render_customer_section(key_prefix):
             placeholder="e.g. 9123 4567",
             key=f"cust_mobile_inp_{key_prefix}_{st.session_state.cust_form_key}")
         st.session_state.cust_mobile = cust_mobile
+    st.caption("Follow-up tags")
+    st.session_state.quote_tags = render_tag_pills(
+        st.session_state.quote_tags, key_prefix=f"new_{key_prefix}_{st.session_state.cust_form_key}")
     st.divider()
 
 _expired_n = st.session_state.get("expiry_banner_count", 0)
@@ -1796,6 +1831,9 @@ with tab_odd:
             value=st.session_state.cust_mobile, placeholder="e.g. 9123 4567",
             key=f"odd_cust_mobile_inp_{st.session_state.cust_form_key}")
         st.session_state.cust_mobile = odd_cust_mobile
+    st.caption("Follow-up tags")
+    st.session_state.quote_tags = render_tag_pills(
+        st.session_state.quote_tags, key_prefix=f"new_odd_{st.session_state.cust_form_key}")
     st.divider()
 
     # ── CSS for new layout ────────────────────────────────────
@@ -2887,14 +2925,11 @@ with tab_hist:
                 with st.expander(label):
                     st.text_area("Full quote",value=text,height=300,key=f"qt_{i}_{qid}")
 
-                    _tag_keys = list(QUOTE_TAG_DEFS.keys())
-                    _selected_tags = st.multiselect(
-                        "Follow-up tags", options=_tag_keys,
-                        default=[t for t in q.get("tags", []) if t in QUOTE_TAG_DEFS],
-                        format_func=tag_option_label, key=f"tags_{i}_{qid}",
-                    )
-                    if _selected_tags != q.get("tags", []):
-                        if set_quote_tags(qid, _selected_tags):
+                    st.caption("Follow-up tags")
+                    _current_tags = q.get("tags", [])
+                    _new_tags = render_tag_pills(_current_tags, key_prefix=f"hist_{i}_{qid}")
+                    if _new_tags != _current_tags:
+                        if set_quote_tags(qid, _new_tags):
                             st.rerun()
                         else:
                             st.error("Could not save tags — try refreshing.")
