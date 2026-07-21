@@ -844,6 +844,49 @@ def quote_is_expired(q):
         return False
     return now_sgt().replace(tzinfo=None) > valid_until
 
+# Preset follow-up tags a quote can carry. Grouped by category, but a quote
+# may carry any combination of tags at once (e.g. "WhatsApp" + "Tender").
+QUOTE_TAG_DEFS = {
+    "src_email":       {"category": "Source", "label": "Email",        "emoji": "📧", "color": "gray"},
+    "src_whatsapp":    {"category": "Source", "label": "WhatsApp",     "emoji": "💬", "color": "gray"},
+    "src_phone":       {"category": "Source", "label": "Phone",        "emoji": "☎️", "color": "gray"},
+    "src_walkin":      {"category": "Source", "label": "Walk-in",      "emoji": "🚶", "color": "gray"},
+    "stage_tender":    {"category": "Stage",  "label": "Tender",       "emoji": "📋", "color": "violet"},
+    "stage_awarded":   {"category": "Stage",  "label": "Awarded",      "emoji": "🏆", "color": "violet"},
+    "stage_direct":    {"category": "Stage",  "label": "Direct",       "emoji": "➡️", "color": "violet"},
+    "status_potential":     {"category": "Status", "label": "Potential",     "emoji": "🌱", "color": "green"},
+    "status_not_interested":{"category": "Status", "label": "Not Interested","emoji": "😞", "color": "red"},
+    "status_call_back":     {"category": "Status", "label": "Call Back",     "emoji": "📞", "color": "blue"},
+}
+
+def tag_option_label(tag_key):
+    """Dropdown display label, e.g. 'Source: WhatsApp'."""
+    d = QUOTE_TAG_DEFS.get(tag_key, {})
+    return f"{d.get('category','')}: {d.get('emoji','')} {d.get('label',tag_key)}"
+
+def tag_badges_markdown(tags):
+    """Returns a string of Streamlit colored-background badges for the given tag keys."""
+    parts = []
+    for t in tags or []:
+        d = QUOTE_TAG_DEFS.get(t)
+        if not d:
+            continue
+        parts.append(f" &nbsp;:{d['color']}-background[{d['emoji']} {d['label']}]")
+    return "".join(parts)
+
+def set_quote_tags(qid, tags):
+    """Saves the given list of tag keys onto the quote. Returns True on success."""
+    history = load_history()
+    found = False
+    for q in history:
+        if q.get("id") == qid:
+            q["tags"] = tags
+            found = True
+            break
+    if not found:
+        return False
+    return save_history(history)
+
 def mark_quote_closed(qid):
     """Marks a quote as closed with today's SGT date. Returns True on success."""
     history = load_history()
@@ -2699,7 +2742,10 @@ with tab_hist:
     def _follow_up_row(_q, _detail_text):
         _fc1, _fc2 = st.columns([5, 1])
         with _fc1:
-            st.markdown(f"&nbsp;&nbsp;• {_q.get('customer','—')} — {_detail_text}")
+            st.markdown(
+                f"&nbsp;&nbsp;• {_q.get('customer','—')} — {_detail_text}"
+                f"{tag_badges_markdown(_q.get('tags', []))}"
+            )
         with _fc2:
             if st.button("🔗 Follow up", key=f"followup_{_q.get('id','')}",
                           use_container_width=True):
@@ -2837,9 +2883,22 @@ with tab_hist:
                         _days_word = "day" if _days_left == 1 else "days"
                         status_badge = (f" &nbsp;:blue-background[Valid until "
                                         f"{_vu.strftime('%d %b %Y')} ({_days_left} {_days_word} left)]")
-                label=f"{type_icon} [{qtype}]  {date} {time}  ·  {name}  ·  {mobile}  ·  SGD {total:,.2f}  ·  Profit SGD {profit:,.2f}  ({margin}%){status_badge}"
+                label=f"{type_icon} [{qtype}]  {date} {time}  ·  {name}  ·  {mobile}  ·  SGD {total:,.2f}  ·  Profit SGD {profit:,.2f}  ({margin}%){status_badge}{tag_badges_markdown(q.get('tags', []))}"
                 with st.expander(label):
                     st.text_area("Full quote",value=text,height=300,key=f"qt_{i}_{qid}")
+
+                    _tag_keys = list(QUOTE_TAG_DEFS.keys())
+                    _selected_tags = st.multiselect(
+                        "Follow-up tags", options=_tag_keys,
+                        default=[t for t in q.get("tags", []) if t in QUOTE_TAG_DEFS],
+                        format_func=tag_option_label, key=f"tags_{i}_{qid}",
+                    )
+                    if _selected_tags != q.get("tags", []):
+                        if set_quote_tags(qid, _selected_tags):
+                            st.rerun()
+                        else:
+                            st.error("Could not save tags — try refreshing.")
+
                     hb1,hb2,hb3=st.columns(3)
                     with hb1:
                         clipboard_copy_button(text, key=f"hist_{i}_{qid}")
