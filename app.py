@@ -1737,15 +1737,19 @@ with tab_quote:
         st.divider()
         q_valid_days = st.slider("Quote validity (days)", min_value=1, max_value=30,
             value=st.session_state.get("q_valid_days", QUOTE_VALIDITY_DAYS), key="q_valid_days")
-        cg1, cg2, cg3 = st.columns([2, 1, 1])
+        cg1, cg2 = st.columns([2, 1])
         with cg1: gen_quote = st.button("GENERATE QUOTE", type="primary", use_container_width=True)
         with cg2:
             if st.button("🗑️ Clear List", use_container_width=True):
                 st.session_state.order_items = []
                 st.session_state.q_ready = False
                 st.rerun()
-        with cg3:
-            if st.button("RESET ALL", use_container_width=True): reset_all()
+
+        st.caption("Starting a brand new quote? This clears customer info and every item currently "
+                   "in Quote Builder, Odd Size, and Plywood, and resets species rates / CCA settings "
+                   "back to default.")
+        if st.button("🔄 Clear All & Start New Quote", use_container_width=True, key="qb_full_reset"):
+            reset_all()
 
         if gen_quote:
             log_items = []; customer_reply = []; grand_total = 0; cost_total = 0
@@ -1810,7 +1814,8 @@ with tab_quote:
             render_quote_output("q", extra_clear_keys=["order_items"], save_type="Quote")
     else:
         st.info("Add items above to build your order list.")
-        if st.button("RESET ALL", use_container_width=True): reset_all()
+        if st.button("🔄 Clear All & Start New Quote", use_container_width=True, key="qb_full_reset_empty"):
+            reset_all()
 
 # ============================================================
 # TAB 2 — ODD SIZE
@@ -2248,6 +2253,12 @@ with tab_odd:
             if st.button("Clear List", use_container_width=True):
                 st.session_state.odd_items=[]; st.session_state.odd_ready=False; st.rerun()
 
+        st.caption("Starting a brand new quote? This clears customer info and every item currently "
+                   "in Quote Builder, Odd Size, and Plywood, and resets species rates / CCA settings "
+                   "back to default.")
+        if st.button("🔄 Clear All & Start New Quote", use_container_width=True, key="odd_full_reset"):
+            reset_all()
+
         if gen_odd:
             odd_log=[]; odd_total=0; odd_cost=0
             for item in st.session_state.odd_items:
@@ -2331,6 +2342,8 @@ with tab_odd:
                 file_prefix="odd_quote")
     else:
         st.info("Fill in customer size above, accept or pick a quote size, then click '+ Add to Odd Size List'.")
+        if st.button("🔄 Clear All & Start New Quote", use_container_width=True, key="odd_full_reset_empty"):
+            reset_all()
 
 # TAB 3 — PLYWOOD
 # ============================================================
@@ -2511,6 +2524,12 @@ with tab_ply:
                 if st.button("Clear Plywood",use_container_width=True):
                     st.session_state.ply_items=[]; st.session_state.ply_ready=False; st.rerun()
 
+            st.caption("Starting a brand new quote? This clears customer info and every item currently "
+                       "in Quote Builder, Odd Size, and Plywood, and resets species rates / CCA settings "
+                       "back to default.")
+            if st.button("🔄 Clear All & Start New Quote", use_container_width=True, key="ply_full_reset"):
+                reset_all()
+
             if gen_ply:
                 ply_log=[]; ply_reply=[]; _ply_has_cca=False; _ply_grand_with_cca=ply_grand
                 for item in st.session_state.ply_items:
@@ -2564,6 +2583,8 @@ with tab_ply:
                     reply_height=300, file_prefix="ply_quote")
         else:
             st.info("Select a grade above, then add items to the order.")
+            if st.button("🔄 Clear All & Start New Quote", use_container_width=True, key="ply_full_reset_empty"):
+                reset_all()
 
     with ply_sub2:
         st.subheader("📏 Plywood Thickness Tolerance Reference")
