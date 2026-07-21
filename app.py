@@ -571,6 +571,7 @@ _defaults = {
     "ply_ready": False, "ply_reply": "", "ply_total": 0.0, "ply_cost": 0.0, "ply_nitem":0, "ply_log": [],
     "comb_ready": False, "comb_reply": "", "comb_total": 0.0, "comb_cost": 0.0, "comb_nitem": 0, "comb_log": [],
     "hist_search_val": "",
+    "hist_search_ver": 0,
     "rate_reset_key": 0,
     "cust_form_key": 0,
     "qrc_search": "",
@@ -2695,47 +2696,53 @@ with tab_hist:
     st.markdown("#### 🕘 Quote History")
     st.caption("Search by customer name or mobile.")
 
+    def _follow_up_row(_q, _detail_text):
+        _fc1, _fc2 = st.columns([5, 1])
+        with _fc1:
+            st.markdown(f"&nbsp;&nbsp;• {_q.get('customer','—')} — {_detail_text}")
+        with _fc2:
+            if st.button("🔗 Follow up", key=f"followup_{_q.get('id','')}",
+                          use_container_width=True):
+                st.session_state.hist_search_val = _q.get("customer", "")
+                st.session_state.hist_search_ver += 1
+                st.rerun()
+
     _expired_list = st.session_state.get("expiry_banner_list", [])
     if _expired_list:
-        _expired_lines = []
+        _n_expired = len(_expired_list)
+        st.error(f"❌ {_n_expired} quote{'s' if _n_expired != 1 else ''} expired this week — needs follow-up")
         for _q in _expired_list:
             _vu = effective_valid_until(_q)
-            _expired_lines.append(
-                f"&nbsp;&nbsp;• {_q.get('customer','—')} — expired {_vu.strftime('%d %b %Y')}"
-            )
-        _n_expired = len(_expired_list)
-        st.error(
-            f"❌ {_n_expired} quote{'s' if _n_expired != 1 else ''} expired this week — needs follow-up  \n"
-            + "  \n".join(_expired_lines)
-        )
+            _follow_up_row(_q, f"expired {_vu.strftime('%d %b %Y')}")
 
     _soon_list = st.session_state.get("expiring_soon_list", [])
     if _soon_list:
-        _soon_lines = []
+        _n_soon = len(_soon_list)
+        st.warning(
+            f"⏰ {_n_soon} quote{'s' if _n_soon != 1 else ''} expiring soon (within "
+            f"{EXPIRING_SOON_WORKING_DAYS} working days)"
+        )
         for _q in _soon_list:
             _vu = effective_valid_until(_q)
             _days_left = (_vu.date() - now_sgt().date()).days
             _when = "today" if _days_left == 0 else f"in {_days_left} day{'s' if _days_left != 1 else ''}"
-            _soon_lines.append(
-                f"&nbsp;&nbsp;• {_q.get('customer','—')} — expires {_when} ({_vu.strftime('%d %b %Y')})"
-            )
-        _n_soon = len(_soon_list)
-        st.warning(
-            f"⏰ {_n_soon} quote{'s' if _n_soon != 1 else ''} expiring soon (within "
-            f"{EXPIRING_SOON_WORKING_DAYS} working days)  \n" + "  \n".join(_soon_lines)
-        )
+            _follow_up_row(_q, f"expires {_when} ({_vu.strftime('%d %b %Y')})")
+
+    if _expired_list or _soon_list:
+        st.divider()
 
     with st.form("hist_search_form",clear_on_submit=False):
         hs1,hs2,hs3=st.columns([4,1,1])
         with hs1:
             search=st.text_input("🔍 Search",value=st.session_state.hist_search_val,
                 placeholder="Type customer name or mobile — press Enter or click Search",
-                key="hist_search_inp",label_visibility="collapsed")
+                key=f"hist_search_inp_{st.session_state.hist_search_ver}",label_visibility="collapsed")
         with hs2: search_btn =st.form_submit_button("🔍 Search", use_container_width=True,type="primary")
         with hs3: refresh_btn=st.form_submit_button("🔄 Refresh",use_container_width=True)
 
     if refresh_btn:
         st.session_state.hist_search_val=""
+        st.session_state.hist_search_ver += 1
         st.session_state.expiry_banner_checked = False
         st.session_state.expiring_soon_checked = False
         st.rerun()
