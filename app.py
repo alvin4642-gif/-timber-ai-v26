@@ -876,13 +876,16 @@ QUOTE_TAG_CATEGORIES = ["Source", "Stage", "Status"]
 def tag_keys_for_category(category):
     return [k for k, d in QUOTE_TAG_DEFS.items() if d["category"] == category]
 
-def render_tag_pills(current_tags, key_prefix):
+def render_tag_pills(current_tags, key_prefix, categories=None):
     """Renders one row of clickable pill buttons per category (Source/Stage/
-    Status), single-select each. Returns the new combined tags list — does
-    NOT save anything itself, caller decides what to do with the result."""
-    _new_tags = []
-    _pcols = st.columns(3)
-    for _cat, _pcol in zip(QUOTE_TAG_CATEGORIES, _pcols):
+    Status by default), single-select each. Returns the new combined tags
+    list — does NOT save anything itself, caller decides what to do with it.
+    Pass categories=[...] to show only a subset (e.g. new-quote screens
+    only show Source/Stage — Status is a follow-up outcome, set later)."""
+    _cats = categories if categories is not None else QUOTE_TAG_CATEGORIES
+    _new_tags = [t for t in current_tags if QUOTE_TAG_DEFS.get(t, {}).get("category") not in _cats]
+    _pcols = st.columns(len(_cats))
+    for _cat, _pcol in zip(_cats, _pcols):
         _cat_keys = tag_keys_for_category(_cat)
         _cat_current = next((t for t in current_tags if t in _cat_keys), None)
         with _pcol:
@@ -1629,7 +1632,8 @@ def render_customer_section(key_prefix):
         st.session_state.cust_mobile = cust_mobile
     st.caption("Follow-up tags")
     st.session_state.quote_tags = render_tag_pills(
-        st.session_state.quote_tags, key_prefix=f"new_{key_prefix}_{st.session_state.cust_form_key}")
+        st.session_state.quote_tags, key_prefix=f"new_{key_prefix}_{st.session_state.cust_form_key}",
+        categories=["Source", "Stage"])
     st.divider()
 
 _expired_n = st.session_state.get("expiry_banner_count", 0)
@@ -1838,7 +1842,8 @@ with tab_odd:
         st.session_state.cust_mobile = odd_cust_mobile
     st.caption("Follow-up tags")
     st.session_state.quote_tags = render_tag_pills(
-        st.session_state.quote_tags, key_prefix=f"new_odd_{st.session_state.cust_form_key}")
+        st.session_state.quote_tags, key_prefix=f"new_odd_{st.session_state.cust_form_key}",
+        categories=["Source", "Stage"])
     st.divider()
 
     # ── CSS for new layout ────────────────────────────────────
@@ -2615,9 +2620,25 @@ with tab_combined:
         st.markdown(f'<div style="margin-top:-6px;margin-bottom:6px">{_comb_cca_pill}</div>',
                     unsafe_allow_html=True)
 
+    st.caption(f"Customer: **{st.session_state.cust_name or '—'}**  ·  "
+               f"{st.session_state.cust_mobile or '—'}  "
+               f"(set in Quote Builder or Plywood)")
+    st.session_state.quote_tags = render_tag_pills(
+        st.session_state.quote_tags, key_prefix=f"new_comb_{st.session_state.cust_form_key}",
+        categories=["Source", "Stage"])
+    st.divider()
+
     if n_timber == 0 and n_ply == 0:
         st.info("Add items in the Quote Builder and/or Plywood tab first, then come back here to combine them.")
     else:
+        st.markdown(f"**Customer:** {st.session_state.cust_name or '—'}  ·  "
+                    f"**Mobile:** {st.session_state.cust_mobile or '—'}")
+        st.caption("Follow-up tags")
+        st.session_state.quote_tags = render_tag_pills(
+            st.session_state.quote_tags, key_prefix=f"new_comb_{st.session_state.cust_form_key}",
+            categories=["Source", "Stage"])
+        st.divider()
+
         comb_valid_days = st.slider("Quote validity (days)", min_value=1, max_value=30,
             value=st.session_state.get("comb_valid_days", QUOTE_VALIDITY_DAYS), key="comb_valid_days")
         if st.button("GENERATE COMBINED QUOTE", type="primary", use_container_width=True):
