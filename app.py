@@ -59,7 +59,7 @@ def add_working_days(start_date, n):
             counted += 1
     return d
 
-st.set_page_config(layout="wide", page_title="Timber AI Assistant V33", page_icon="🪵")
+st.set_page_config(layout="wide", page_title="Timber AI Assistant V34", page_icon="🪵")
 
 # ============================================================
 # CSS
@@ -596,7 +596,7 @@ def reset_all():
 st.markdown("""
 <div class="app-header">
   <div class="app-header-title">🪵 Timber AI Assistant
-    <span style="background:#1D9E75;color:white;font-size:13px;padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle">V33</span>
+    <span style="background:#1D9E75;color:white;font-size:13px;padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle">V34</span>
   </div>
   <div class="app-header-sub">Professional Quoting System &nbsp;·&nbsp; Prices in SGD</div>
 </div>
@@ -1362,7 +1362,7 @@ def parsed_to_odd_item(p, species_rate_map):
     }
 
 # ============================================================
-# SHARED UI HELPERS (V33) — used by Quote Builder / Odd Size /
+# SHARED UI HELPERS (V34) — used by Quote Builder / Odd Size /
 # Plywood tabs to avoid triplicated card/pricing/output code.
 # ============================================================
 
@@ -2631,14 +2631,6 @@ with tab_combined:
     if n_timber == 0 and n_ply == 0:
         st.info("Add items in the Quote Builder and/or Plywood tab first, then come back here to combine them.")
     else:
-        st.markdown(f"**Customer:** {st.session_state.cust_name or '—'}  ·  "
-                    f"**Mobile:** {st.session_state.cust_mobile or '—'}")
-        st.caption("Follow-up tags")
-        st.session_state.quote_tags = render_tag_pills(
-            st.session_state.quote_tags, key_prefix=f"new_comb_{st.session_state.cust_form_key}",
-            categories=["Source", "Stage"])
-        st.divider()
-
         comb_valid_days = st.slider("Quote validity (days)", min_value=1, max_value=30,
             value=st.session_state.get("comb_valid_days", QUOTE_VALIDITY_DAYS), key="comb_valid_days")
         if st.button("GENERATE COMBINED QUOTE", type="primary", use_container_width=True):
@@ -2998,4 +2990,4 @@ with tab_hist:
 # FOOTER
 # ============================================================
 st.markdown("---")
-st.caption("Timber AI Assistant V33  · ALVIN  ")
+st.caption("Timber AI Assistant V34  · ALVIN  ")
