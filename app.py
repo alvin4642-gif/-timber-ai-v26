@@ -2995,7 +2995,7 @@ with tab_nego:
         st.divider()
         _qid = _selected.get("id")
         st.markdown(f"**{_selected.get('customer','—')}** · {_selected.get('mobile','—')} · "
-                    f"quoted {_selected.get('date','')} · original total **S${float(_selected.get('total',0)):,.2f}**")
+                    f"quoted {_selected.get('date','')}")
 
         _items = _selected.get("items")
         _overrides = st.session_state.nego_item_overrides.setdefault(_qid, {})
@@ -3011,7 +3011,7 @@ with tab_nego:
                         _raw_pcs, _pcs, _price = calc_from_mm(
                             _it["w_mm"], _it["h_mm"], _it["ft"], _it["rate"], _it.get("nom_w"), _it.get("nom_h"))
                         st.markdown(f"**{_it.get('label','item')}** · qty {_it.get('qty',0)}  "
-                                    f"<span style='color:var(--color-text-secondary);font-size:12px'>pcs/ton: {_pcs}</span>",
+                                    f"<span style='color:var(--color-text-secondary)'>pcs/ton: {_pcs}</span>",
                                     unsafe_allow_html=True)
                         st.caption(f"Original: S${_it['price_per_pc']}/pc · S${_it['rate']:,.0f}/ton")
                         _new_pc, _new_ton = render_bidirectional_rate_calc(
@@ -3055,10 +3055,14 @@ with tab_nego:
         _delta_sign = "+" if _delta_pct > 0 else ""
 
         st.markdown(
-            f'<div style="display:flex;justify-content:space-between;align-items:center;'
-            f'background:var(--bg-success);border-radius:var(--radius);padding:12px 16px">'
-            f'<span style="color:var(--text-success)">Final total: S${_final_total:,.2f} '
-            f'(quoted S${_orig_total:,.2f}, {_delta_sign}{_delta_pct}%)</span></div>',
+            f'<div style="background:var(--surface-1);border-radius:var(--radius);padding:12px 16px;margin-bottom:8px">'
+            f'<div style="color:var(--color-text-secondary);font-size:13px">Original total</div>'
+            f'<div style="font-size:20px">S${_orig_total:,.2f}</div>'
+            f'</div>'
+            f'<div style="background:var(--bg-success);border-radius:var(--radius);padding:12px 16px">'
+            f'<div style="color:var(--text-success);font-size:13px">New final total ({_delta_sign}{_delta_pct}%)</div>'
+            f'<div style="color:var(--text-success);font-size:20px;font-weight:600">S${_final_total:,.2f}</div>'
+            f'</div>',
             unsafe_allow_html=True)
 
         if st.button("✅ Close with these figures", type="primary", use_container_width=True, key=f"nego_close_{_qid}"):
