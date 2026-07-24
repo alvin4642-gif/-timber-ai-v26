@@ -2702,36 +2702,39 @@ with tab_ply:
 # TAB 3.5 — COMBINED (Timber + Plywood in one reply)
 # ============================================================
 with tab_combined:
-    st.markdown("#### Combine current Timber + Plywood items into one reply")
-    st.caption("Pulls whatever is currently sitting in the Quote Builder and Plywood tabs. "
+    st.markdown("#### Combine current Timber + Odd Size + Plywood items into one reply")
+    st.caption("Pulls whatever is currently sitting in the Quote Builder, Odd Size, and Plywood tabs. "
                "Nothing is removed from those tabs by generating here.")
 
     n_timber = len(st.session_state.order_items)
+    n_odd = len(st.session_state.odd_items)
     n_ply = len(st.session_state.ply_items)
 
-    cc1, cc2 = st.columns(2)
+    cc1, cc2, cc3 = st.columns(3)
     with cc1: st.metric("Timber items (Quote Builder)", n_timber)
-    with cc2: st.metric("Plywood items", n_ply)
-    _comb_cca_pill = cca_status_pill(st.session_state.order_items + st.session_state.ply_items)
+    with cc2: st.metric("Odd Size items", n_odd)
+    with cc3: st.metric("Plywood items", n_ply)
+    _comb_cca_pill = cca_status_pill(st.session_state.order_items + st.session_state.odd_items + st.session_state.ply_items)
     if _comb_cca_pill:
         st.markdown(f'<div style="margin-top:-6px;margin-bottom:6px">{_comb_cca_pill}</div>',
                     unsafe_allow_html=True)
 
     st.caption(f"Customer: **{st.session_state.cust_name or '—'}**  ·  "
                f"{st.session_state.cust_mobile or '—'}  "
-               f"(set in Quote Builder or Plywood)")
+               f"(set in Quote Builder, Odd Size, or Plywood)")
     st.session_state.quote_tags = render_tag_pills(
         st.session_state.quote_tags, key_prefix=f"new_comb_{st.session_state.cust_form_key}",
         categories=["Source", "Stage"])
     st.divider()
 
-    if n_timber == 0 and n_ply == 0:
-        st.info("Add items in the Quote Builder and/or Plywood tab first, then come back here to combine them.")
+    if n_timber == 0 and n_odd == 0 and n_ply == 0:
+        st.info("Add items in the Quote Builder, Odd Size, and/or Plywood tab first, then come back here to combine them.")
     else:
         comb_valid_days = st.slider("Quote validity (days)", min_value=1, max_value=30,
             value=st.session_state.get("comb_valid_days", QUOTE_VALIDITY_DAYS), key="comb_valid_days")
         if st.button("GENERATE COMBINED QUOTE", type="primary", use_container_width=True):
-            combined_log = []; combined_reply = []
+            combined_log = []
+            _timber_reply = []; _odd_reply = []; _ply_reply = []
             combined_total = 0; combined_cost = 0
             combined_item_count = 0
             has_cca = False
@@ -2778,18 +2781,80 @@ with tab_combined:
                     })
                     if _item_cca:
                         has_cca = True
-                        combined_reply.append(
+                        _timber_reply.append(
                             f"{item['species']} timber planed treated with anti-termite / insect borer treatment ({cca_colour})\n"
                             f"{item['size']} @ S${_combined_price}/pcs x {item['qty']} = S${gt:,.2f}"
                         )
                     else:
-                        combined_reply.append(
+                        _timber_reply.append(
                             f"{item['species']} timber\n{item['size']} @ S${locked_price}/pcs x {item['qty']} = S${gt:,.2f}"
                         )
 
-            # ---- Divider between sections (only if both present) ----
-            if st.session_state.order_items and st.session_state.ply_items:
-                combined_reply.append("-" * 32)
+            # ---- Odd Size section (same math + grouping as Odd Size tab) ----
+            if st.session_state.odd_items:
+                for item in st.session_state.odd_items:
+                    combined_item_count += 1
+                    _odd_item_cca = item.get("cca", False)
+                    _odd_combined_price = cca_combined_price(item["price"], _odd_item_cca, cca_rate)
+                    _odd_line_total = round(_odd_combined_price * item["qty"], 2)
+                    combined_total += _odd_line_total
+                    cost_est = round(_odd_line_total * 0.85, 2); combined_cost += cost_est
+                    profit = round(_odd_line_total - cost_est, 2)
+                    _odd_cca_badge_html = (
+                        ' <span style="font-size:11px;padding:1px 8px;border-radius:99px;'
+                        'background:#1D9E75;color:white;margin-left:6px">🧪 CCA</span>'
+                        if _odd_item_cca else ""
+                    )
+                    _odd_price_rows = (
+                        {
+                            "Timber price/pc":   f"S${item['price']}",
+                            "CCA rate/pc":       f"+ S${cca_rate:.2f} ({cca_colour})",
+                            "Combined price/pc": f"S${_odd_combined_price}",
+                        } if _odd_item_cca else
+                        {"Price per piece": f"S${item['price']} (rounded up to nearest 10 cents)"}
+                    )
+                    combined_log.append({
+                        "heading": f"{item['species']} (odd size){_odd_cca_badge_html}",
+                        "rows": {
+                            "Customer size":    item['cust_size'],
+                            "Priced as":        item['quote_size'],
+                            "Rate":             f"S${item['rate']}/ton",
+                            **_odd_price_rows,
+                            "Qty":              f"{item['qty']} pcs",
+                            "Line total":       f"S${_odd_line_total:,.2f}",
+                        },
+                        "profit_line": f"S${profit:,.2f}", "small_qty": item["small_qty"]
+                    })
+                    if _odd_item_cca:
+                        has_cca = True
+
+                # Grouped customer-facing reply, matching Odd Size tab's own formatting
+                from collections import defaultdict as _comb_dd
+                _comb_groups = _comb_dd(list)
+                for item in st.session_state.odd_items:
+                    _dt = item.get("dim_type", "Sawn")
+                    _comb_groups[(item["species"], _dt)].append(item)
+                _comb_group_order = sorted(_comb_groups.keys(), key=lambda k: (0 if k[1] == "Sawn" else 1, k[0]))
+                for _gi, _gkey in enumerate(_comb_group_order):
+                    _sp, _dt = _gkey
+                    _gitems = _comb_groups[_gkey]
+                    if _gi > 0:
+                        _odd_reply.append("")
+                    _non_cca_items = [_it for _it in _gitems if not _it.get("cca")]
+                    if _non_cca_items:
+                        _odd_reply.append(f"{_sp} timber {_dt.lower()}")
+                    for _it in _gitems:
+                        if _it.get("cca"):
+                            _combined_odd = cca_combined_price(_it["price"], True, cca_rate)
+                            _cca_line_total = round(_combined_odd * _it["qty"], 2)
+                            _odd_reply.append(
+                                f"{_sp} timber {_dt.lower()} treated with anti-termite / insect borer treatment ({cca_colour})\n"
+                                f"{_it['quote_size']} @ S${_combined_odd}/pcs x {_it['qty']} = S${_cca_line_total:,.2f}"
+                            )
+                        else:
+                            _odd_reply.append(
+                                f"{_it['quote_size']}\n@ S${_it['price']}/pcs x {_it['qty']} = S${_it['line_total']:,.2f}"
+                            )
 
             # ---- Plywood section (same math as Plywood tab) ----
             has_fr = False
@@ -2826,21 +2891,30 @@ with tab_combined:
                     if "Fire Retardant" in item["grade"]:
                         has_fr = True
                     if _ply_item_cca:
-                        combined_reply.append(
+                        _ply_reply.append(
                             f"{item['grade']} plywood with anti-termite / insect borer treatment ({cca_colour})\n"
                             f"{item['thk']}mm x 1.22m x 2.44m @ S${_combined_ply:.2f}/sheet x {item['actual_qty']} = S${_ply_line_total:,.2f}{moq_note_txt}"
                         )
                     else:
-                        combined_reply.append(
+                        _ply_reply.append(
                             f"{item['grade']} plywood {item['thk']}mm x 1.22m x 2.44m @ S${_sell_r:.2f}/sheet x {item['actual_qty']} = S${_ply_line_total:,.2f}{moq_note_txt}"
                         )
+
+            # ---- Assemble sections, joining with a divider only between sections that actually have content ----
+            combined_reply = []
+            for _section in (_timber_reply, _odd_reply, _ply_reply):
+                if not _section:
+                    continue
+                if combined_reply:
+                    combined_reply.append("-" * 32)
+                combined_reply.extend(_section)
 
             combined_total = round(combined_total, 2); combined_cost = round(combined_cost, 2)
             fr_note = "\n* Note (Fire Retardant): Plywood may/will be wet & may/will have some powder when dried." if has_fr else ""
             cca_note = "\n\nNote: After treatment, timber/plywood may be wet and may have some powder when dried." if has_cca else ""
             reply_text = build_reply(
                 combined_reply, combined_total,
-                is_timber=bool(st.session_state.order_items),
+                is_timber=bool(st.session_state.order_items) or bool(st.session_state.odd_items),
                 is_plywood=bool(st.session_state.ply_items),
                 extra_note=fr_note + cca_note,
                 valid_days=comb_valid_days
@@ -2852,6 +2926,7 @@ with tab_combined:
         if st.session_state.get("comb_ready"):
             _comb_raw_items = (
                 normalize_items_for_negotiation(st.session_state.order_items, "timber") +
+                normalize_items_for_negotiation(st.session_state.odd_items, "timber") +
                 normalize_items_for_negotiation(st.session_state.ply_items, "plywood")
             )
             render_quote_output("comb", save_type="Combined", show_copy=True, show_clear=True,
