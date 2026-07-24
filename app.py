@@ -488,7 +488,7 @@ PLY_COST = {
     "Marine BS1088":         {9:30.0,   12:38.3,  15:46.2,  18:56.7,   25:77.7},
     "T2 Marine":             {6:17.5,   9:20.0,   12:26.0,  15:31.0,   18:36.0,   25:48.0},
     "Fire Retardant BS476":  {3:14.0,   6:26.0,   9:37.0,   12:49.0,   15:63.0,   18:70.0,  25:80.0},
-    # TODO (Alvin): cost price to be updated — placeholder S$0.00 means profit/margin
+    # TODO (Alvin): cost price to be updated — placeholder S$0.00 means profit
     # will show as 100% until this is filled in. Don't quote off this until updated.
     "Birch Plywood":         {15:0.0,   18:0.0},
 }
@@ -573,6 +573,8 @@ _defaults = {
     "comb_ready": False, "comb_reply": "", "comb_total": 0.0, "comb_cost": 0.0, "comb_nitem": 0, "comb_log": [],
     "hist_search_val": "",
     "hist_search_ver": 0,
+    "nego_search_val": "", "nego_search_ver": 0, "nego_selected_qid": None,
+    "nego_item_overrides": {}, "nego_calc_ver": {},
     "rate_reset_key": 0,
     "cust_form_key": 0,
     "qrc_search": "",
@@ -801,7 +803,6 @@ if "ply_cost_overrides" not in st.session_state:
 def save_quote(customer, mobile, total, items, quote_text, cost_total=0, quote_type="Quote", valid_days=None):
     history = load_history()
     profit  = round(total - cost_total, 2)
-    margin  = round((profit / total * 100), 1) if total > 0 else 0
     _valid_days = valid_days if valid_days is not None else QUOTE_VALIDITY_DAYS
     entry   = {
         "id":       now_sgt().strftime("%Y%m%d_%H%M%S"),
@@ -811,7 +812,7 @@ def save_quote(customer, mobile, total, items, quote_text, cost_total=0, quote_t
         "mobile":   mobile.strip()   if mobile.strip()   else "—",
         "type":     quote_type,
         "items": items, "total": total, "cost": cost_total,
-        "profit": profit, "margin": margin, "text": quote_text,
+        "profit": profit, "text": quote_text,
         "closed": False, "closed_date": "",
         "tags": list(st.session_state.get("quote_tags", [])),
         "valid_until": (now_sgt() + timedelta(days=_valid_days)).strftime("%d %b %Y")
@@ -936,6 +937,23 @@ def mark_quote_closed(qid):
         return False
     return save_history(history)
 
+def close_quote_negotiated(qid, final_total):
+    """Marks a quote closed with a (possibly negotiated) final total that's
+    kept separate from the original quoted total, so History can show both
+    ('Quoted S$X -> Closed S$Y') rather than overwriting the record."""
+    history = load_history()
+    found = False
+    for q in history:
+        if q.get("id") == qid:
+            q["closed"] = True
+            q["closed_date"] = now_sgt().strftime("%d %b %Y")
+            q["closed_total"] = round(final_total, 2)
+            found = True
+            break
+    if not found:
+        return False
+    return save_history(history)
+
 def delete_quote(qid):
     history = load_history()
     save_history([q for q in history if q.get("id") != qid])
@@ -1013,6 +1031,79 @@ def calc_from_mm(w_mm, h_mm, ft, rate, nom_w=None, nom_h=None):
     pcs     = max(math.floor(raw_pcs), 1)
     price   = ceil_10cents(rate / pcs)
     return round(raw_pcs, 3), pcs, price
+
+def normalize_items_for_negotiation(raw_items, kind):
+    """Converts a tab's raw session-state item list (order_items/odd_items/
+    ply_items) into a compact, uniform snapshot saved onto the history entry.
+    This is what the Negotiation tab reads back to recompute pcs/ton and
+    rates for a previously-saved quote — the raw lists themselves aren't
+    saved (they're per-session scratch state), so this is the only record."""
+    normalized = []
+    if kind == "timber":
+        for it in raw_items:
+            normalized.append({
+                "kind": "timber",
+                "label": f"{it['species']} {it['size']}",
+                "species": it["species"], "size": it["size"],
+                "qty": it["qty"], "rate": it["rate"],
+                "price_per_pc": it["price"],
+                "w_mm": it["w_mm"], "h_mm": it["h_mm"], "ft": it["ft"],
+                "nom_w": it.get("nom_w"), "nom_h": it.get("nom_h"),
+            })
+    elif kind == "plywood":
+        for it in raw_items:
+            normalized.append({
+                "kind": "plywood",
+                "label": f"{it['grade']} {it['thk']}mm",
+                "grade": it["grade"], "thk": it["thk"],
+                "qty": it["actual_qty"], "cost": it["cost"],
+                "price_per_pc": it.get("sell_rounded", it["sell"]),
+            })
+    return normalized
+
+def render_bidirectional_rate_calc(item_key, pcs_per_ton, original_rate, original_price_pc):
+    """Two linked number inputs: candidate $/pc and target $/ton. Editing
+    either one live-recalculates the other (pcs_per_ton is fixed for a given
+    size). Shows %-vs-original-rate alongside. Returns (price_pc, rate_ton)
+    currently selected."""
+    pc_state_key  = f"nego_pc_val_{item_key}"
+    ton_state_key = f"nego_ton_val_{item_key}"
+    ver_key       = f"nego_ver_{item_key}"
+    if pc_state_key not in st.session_state:
+        st.session_state[pc_state_key] = original_price_pc
+    if ton_state_key not in st.session_state:
+        st.session_state[ton_state_key] = original_rate
+    if ver_key not in st.session_state:
+        st.session_state[ver_key] = 0
+    ver = st.session_state[ver_key]
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        new_pc = st.number_input("Candidate $/pc", min_value=0.0,
+            value=float(st.session_state[pc_state_key]), step=0.5, format="%.2f",
+            key=f"nego_pc_inp_{item_key}_{ver}")
+    with c2:
+        new_ton = st.number_input("Implied $/ton", min_value=0.0,
+            value=float(st.session_state[ton_state_key]), step=10.0, format="%.2f",
+            key=f"nego_ton_inp_{item_key}_{ver}")
+
+    if abs(new_pc - st.session_state[pc_state_key]) > 1e-9:
+        st.session_state[pc_state_key]  = new_pc
+        st.session_state[ton_state_key] = round(new_pc * pcs_per_ton, 2) if pcs_per_ton else 0
+        st.session_state[ver_key] += 1
+        st.rerun()
+    elif abs(new_ton - st.session_state[ton_state_key]) > 1e-9:
+        st.session_state[ton_state_key] = new_ton
+        st.session_state[pc_state_key]  = round(new_ton / pcs_per_ton, 2) if pcs_per_ton else 0
+        st.session_state[ver_key] += 1
+        st.rerun()
+
+    with c3:
+        _pct = round((st.session_state[ton_state_key] - original_rate) / original_rate * 100, 1) if original_rate else 0
+        _sign = "+" if _pct > 0 else ""
+        st.metric("vs your rate", f"{_sign}{_pct}%")
+
+    return st.session_state[pc_state_key], st.session_state[ton_state_key]
 
 def is_keruing(species):
     return species in ["Mixed Keruing", "Pure Keruing"]
@@ -1159,7 +1250,6 @@ def render_table(rows):
 
 def render_staff_log(log_items, grand_total, cost_total):
     profit = round(grand_total - cost_total, 2)
-    margin = round((profit / grand_total * 100), 1) if grand_total > 0 else 0
     html = '<div class="staff-log"><div class="staff-log-header">Staff Calculation Log</div>'
     for i, item in enumerate(log_items, 1):
         warn    = '<span class="warn-chip">&#9888;&#65039; SMALL QTY &mdash; adjust price before sending</span>' if item.get("small_qty") else ""
@@ -1168,10 +1258,10 @@ def render_staff_log(log_items, grand_total, cost_total):
         html += '<div class="log-item">'
         html += f'<div class="log-item-head"><span class="log-num">{i}</span>{item["heading"]}</div>'
         html += f'<div class="log-grid">{grid}<span class="log-label">Profit</span>'
-        html += f'<span class="log-profit">{item.get("profit_line","")} <span class="profit-chip">{item.get("margin_pct","")}</span>{warn}</span></div>'
+        html += f'<span class="log-profit">{item.get("profit_line","")}{warn}</span></div>'
         html += moq_div + '</div>'
     html += '<div class="log-total">'
-    html += f'<div class="log-total-label">Grand total &nbsp;&middot;&nbsp; {len(log_items)} item(s) &nbsp;&middot;&nbsp; Margin {margin}%</div>'
+    html += f'<div class="log-total-label">Grand total &nbsp;&middot;&nbsp; {len(log_items)} item(s)</div>'
     html += f'<div><span class="log-total-val">S${grand_total:,.2f}</span> <span class="profit-chip">Profit S${profit:,.2f}</span></div>'
     html += '</div></div>'
     st.markdown(html, unsafe_allow_html=True)
@@ -1486,20 +1576,21 @@ def render_item_card(title, pills, detail_line, price_line, warn=False,
 def render_quote_output(prefix, extra_clear_keys=None, save_type=None,
                          show_metrics=True, show_staff_log=True,
                          show_copy=True, show_clear=True, reply_height=350,
-                         file_prefix=None):
+                         file_prefix=None, raw_items=None):
     """Renders staff log + reply textarea + action buttons.
     save_type=None disables the Save to History button.
     show_metrics/show_staff_log/show_copy/show_clear let a tab opt out of
-    parts it doesn't use (e.g. Odd Size has no staff log display today)."""
+    parts it doesn't use (e.g. Odd Size has no staff log display today).
+    raw_items: normalized item snapshot (see normalize_items_for_negotiation)
+    saved onto the history entry for later use in the Negotiation tab."""
     ss = st.session_state
     grand_total = ss[f"{prefix}_total"]; cost_total = ss[f"{prefix}_cost"]
     if show_metrics:
         st.subheader("Quote Summary")
-        m1, m2, m3, m4 = st.columns(4)
+        m1, m2, m3 = st.columns(3)
         with m1: st.metric("Items", ss[f"{prefix}_nitem"])
         with m2: st.metric("Grand Total", f"S${grand_total:,.2f}")
         with m3: st.metric("Est. Profit", f"S${round(grand_total - cost_total, 2):,.2f}")
-        with m4: st.metric("Est. Margin", f"{round((grand_total - cost_total) / grand_total * 100, 1) if grand_total > 0 else 0}%")
     if show_staff_log:
         render_staff_log(ss[f"{prefix}_log"], grand_total, cost_total)
     st.divider()
@@ -1513,7 +1604,8 @@ def render_quote_output(prefix, extra_clear_keys=None, save_type=None,
         with cols[col_i]:
             if st.button("💾 Save to History", type="primary", use_container_width=True, key=f"save_{prefix}"):
                 ok = save_quote(ss.cust_name, ss.cust_mobile, grand_total,
-                    ss[f"{prefix}_nitem"], edited, cost_total, quote_type=save_type,
+                    raw_items if raw_items is not None else ss[f"{prefix}_nitem"],
+                    edited, cost_total, quote_type=save_type,
                     valid_days=ss.get(f"{prefix}_valid_days", QUOTE_VALIDITY_DAYS))
                 if ok: st.success("✅ Saved!")
                 else:  st.error("❌ Could not save.")
@@ -1646,9 +1738,9 @@ elif _expired_n > 0:
 elif _soon_n > 0:
     _history_tab_label = f"🕘 History ({_soon_n} ⏰)"
 
-tab_quote, tab_odd, tab_ply, tab_combined, tab_sup, tab_hist = st.tabs([
+tab_quote, tab_odd, tab_ply, tab_combined, tab_nego, tab_sup, tab_hist = st.tabs([
     "📋 Quote Builder", "📐 Odd Size", "🪵 Plywood", "🔀 Combined",
-    "🏭 Suppliers", _history_tab_label
+    "🤝 Negotiation", "🏭 Suppliers", _history_tab_label
 ])
 
 # ============================================================
@@ -1771,7 +1863,6 @@ with tab_quote:
                 grand_total += gt
                 cost_est = round(gt * 0.85, 2); cost_total += cost_est
                 profit = round(gt - cost_est, 2)
-                margin_pct = round((profit / gt * 100), 1) if gt > 0 else 0
                 _cca_badge_html = (
                     ' <span style="font-size:11px;padding:1px 8px;border-radius:99px;'
                     'background:#1D9E75;color:white;margin-left:6px">🧪 CCA</span>'
@@ -1794,7 +1885,7 @@ with tab_quote:
                         "Qty":             f"{item['qty']} pcs",
                         "Line total":      f"S${gt:,.2f}",
                     },
-                    "profit_line": f"S${profit:,.2f}", "margin_pct": f"{margin_pct}%",
+                    "profit_line": f"S${profit:,.2f}",
                     "small_qty": item["small_qty"]
                 })
                 if _item_cca:
@@ -1815,7 +1906,8 @@ with tab_quote:
             st.session_state.q_nitem = len(customer_reply); st.session_state.q_log = log_items
 
         if st.session_state.q_ready:
-            render_quote_output("q", extra_clear_keys=["order_items"], save_type="Quote")
+            render_quote_output("q", extra_clear_keys=["order_items"], save_type="Quote",
+                raw_items=normalize_items_for_negotiation(st.session_state.order_items, "timber"))
     else:
         st.info("Add items above to build your order list.")
         if st.button("🔄 Clear All & Start New Quote", use_container_width=True, key="qb_full_reset_empty"):
@@ -2100,6 +2192,15 @@ with tab_odd:
             _, _pcs_ov, _price_ov = calc_from_mm(qw_mm, qh_mm, _ft_ov, odd_rate)
             _line_ov = round(_price_ov * st.session_state.odd_qty, 2)
             st.caption(f"Preview: 7200/{mm_to_nominal_inch(qw_mm)}/{mm_to_nominal_inch(qh_mm)}/{_ft_ov}ft = {_pcs_ov} pcs → S${_price_ov}/pc")
+            if _has_dims:
+                _undersize_msgs = []
+                if qh_mm < _cthk_mm - 0.01:
+                    _undersize_msgs.append(f"thickness {qh_mm:g}mm is smaller than customer's stated {_cthk_mm:g}mm")
+                if qw_mm < _cwid_mm - 0.01:
+                    _undersize_msgs.append(f"width {qw_mm:g}mm is smaller than customer's stated {_cwid_mm:g}mm")
+                if _undersize_msgs:
+                    st.warning("⚠️ Your " + " and ".join(_undersize_msgs) +
+                               " — double-check this is intentional (e.g. an approved substitute) before adding.")
             if st.button("✓ Use this size", key="odd_use_override"):
                 _nom_ov_w = mm_to_nominal_inch(qw_mm); _nom_ov_h = mm_to_nominal_inch(qh_mm)
                 raw_ov, pcs_ov, price_ov = calc_from_mm(qw_mm, qh_mm, _ft_ov, odd_rate, _nom_ov_w, _nom_ov_h)
@@ -2236,13 +2337,12 @@ with tab_odd:
         _odd_gt = sum(it["line_total"] for it in st.session_state.odd_items)
         _odd_gc = sum(round(it["line_total"]*0.85,2) for it in st.session_state.odd_items)
         _odd_gp = round(_odd_gt - _odd_gc, 2)
-        _odd_gm = round(_odd_gp / _odd_gt * 100, 1) if _odd_gt > 0 else 0
         _n = len(st.session_state.odd_items)
         st.markdown(
             f'<div style="display:flex;justify-content:space-between;align-items:center;'
             f'background:var(--color-background-secondary);border-radius:var(--border-radius-md);'
             f'padding:10px 14px;margin-bottom:8px;font-size:13px">'
-            f'<span style="color:var(--color-text-secondary)">{_n} item(s) · Margin {_odd_gm}%</span>'
+            f'<span style="color:var(--color-text-secondary)">{_n} item(s)</span>'
             f'<span><b style="color:var(--color-text-primary)">S${_odd_gt:,.2f}</b>'
             f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;'
             f'background:#E1F5EE;color:#0F6E56;margin-left:8px">Profit S${_odd_gp:,.2f}</span></span>'
@@ -2273,7 +2373,6 @@ with tab_odd:
                 odd_total+=_odd_line_total
                 cost_est=round(_odd_line_total*0.85,2); odd_cost+=cost_est
                 profit=round(_odd_line_total-cost_est,2)
-                margin_pct=round((profit/_odd_line_total*100),1) if _odd_line_total>0 else 0
                 _odd_cca_badge_html = (
                     ' <span style="font-size:11px;padding:1px 8px;border-radius:99px;'
                     'background:#1D9E75;color:white;margin-left:6px">🧪 CCA</span>'
@@ -2299,7 +2398,7 @@ with tab_odd:
                         "Qty":              f"{item['qty']} pcs",
                         "Line total":       f"S${_odd_line_total:,.2f}",
                     },
-                    "profit_line":f"S${profit:,.2f}","margin_pct":f"{margin_pct}%","small_qty":item["small_qty"]
+                    "profit_line":f"S${profit:,.2f}","small_qty":item["small_qty"]
                 })
             odd_total=round(odd_total,2); odd_cost=round(odd_cost,2)
 
@@ -2344,7 +2443,8 @@ with tab_odd:
             render_quote_output("odd", save_type="Odd Size",
                 show_metrics=False, show_staff_log=False,
                 show_copy=True, show_clear=False, reply_height=300,
-                file_prefix="odd_quote")
+                file_prefix="odd_quote",
+                raw_items=normalize_items_for_negotiation(st.session_state.odd_items, "timber"))
     else:
         st.info("Fill in customer size above, accept or pick a quote size, then click '+ Add to Odd Size List'.")
         if st.button("🔄 Clear All & Start New Quote", use_container_width=True, key="odd_full_reset_empty"):
@@ -2374,13 +2474,13 @@ with tab_ply:
                 tbl_rows = []
                 for thk in sorted(PLY_SELL[sel].keys()):
                     cost=effective_ply_cost(sel,thk); sell_def=PLY_SELL[sel][thk]
-                    profit=round(sell_def-cost,2); margin=round((profit/sell_def*100),1) if sell_def>0 else 0
+                    profit=round(sell_def-cost,2)
                     note=PLY_ACTUAL.get(sel,{}).get(thk,""); moq=PLY_MOQ.get(sel,{}).get(thk,1)
                     notes=[]
                     if note: notes.append(note)
                     if moq>1: notes.append(f"MOQ {moq} sheets")
                     tbl_rows.append({"Thickness":f"{thk}mm","YC Cost":f"S${cost}","Sell Price":f"S${sell_def}",
-                        "Profit":f"S${profit}","Margin":f"{margin}%","Notes":" · ".join(notes) if notes else "—"})
+                        "Profit":f"S${profit}","Notes":" · ".join(notes) if notes else "—"})
                 render_table(tbl_rows)
 
         st.divider()
@@ -2420,18 +2520,17 @@ with tab_ply:
             st.caption(f"💲 Tiered pricing: S${_ti['sell_high_qty']}/sheet for {_ti['moq_threshold']}+ sheets, "
                        f"S${_ti['sell_low_qty']}/sheet for under {_ti['moq_threshold']} sheets")
         profit_preview=round(p_sell_def-p_cost_def,2)
-        margin_preview=round((profit_preview/p_sell_def*100),1) if p_sell_def>0 else 0
 
         fa1,fa2,fa3,fa4=st.columns([2,1,1,1])
         with fa1:
             p_sell_key=f"ply_sell_{p_grade}_{p_thk}_{_tier_bucket}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
             p_sell_f=st.number_input("Selling Price (S$/sheet)",min_value=0.0,value=float(p_sell_def),step=0.5,format="%.2f",key=p_sell_key)
         with fa2: p_qty_f=st.number_input("Qty (sheets)",min_value=1,value=1,step=1,key="ply_qty_inp")
-        with fa3: st.markdown(f"<br><small>Default profit:<br>S${profit_preview}/sheet ({margin_preview}%)</small>",unsafe_allow_html=True)
+        with fa3: st.markdown(f"<br><small>Default profit:<br>S${profit_preview}/sheet</small>",unsafe_allow_html=True)
         with fa4: st.markdown("<br>",unsafe_allow_html=True); add_ply=st.button("+ Add Plywood",type="primary",use_container_width=True,key="ply_add_btn")
 
         if p_sell_def==0.0: st.warning("⚠️ Selling price is S$0.00 — check price table.")
-        if p_cost_def==0.0: st.caption("⚠️ Cost price not yet set for this item — profit/margin shown will be inaccurate until updated.")
+        if p_cost_def==0.0: st.caption("⚠️ Cost price not yet set for this item — profit shown will be inaccurate until updated.")
 
         with st.expander(f"✏️ Update cost price for {p_grade} {p_thk}mm", expanded=False):
             _new_cost_key=f"newcost_{p_grade}_{p_thk}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
@@ -2513,13 +2612,11 @@ with tab_ply:
             ply_grand=round(sum(x["line_total"] for x in st.session_state.ply_items),2)
             ply_cost_total=round(sum(x["cost"]*x["actual_qty"] for x in st.session_state.ply_items),2)
             ply_profit=round(ply_grand-ply_cost_total,2)
-            ply_margin=round((ply_profit/ply_grand*100),1) if ply_grand>0 else 0
 
-            pm1,pm2,pm3,pm4=st.columns(4)
+            pm1,pm2,pm3=st.columns(3)
             with pm1: st.metric("Items Quoted",len(st.session_state.ply_items))
             with pm2: st.metric("Plywood Total",f"S${ply_grand:,.2f}")
             with pm3: st.metric("Profit",f"S${ply_profit:,.2f}")
-            with pm4: st.metric("Margin",f"{ply_margin}%")
 
             ply_valid_days = st.slider("Quote validity (days)", min_value=1, max_value=30,
                 value=st.session_state.get("ply_valid_days", QUOTE_VALIDITY_DAYS), key="ply_valid_days")
@@ -2540,7 +2637,6 @@ with tab_ply:
                 for item in st.session_state.ply_items:
                     _sell_r = item.get("sell_rounded", ceil_10cents(item["sell"]))
                     profit_total=round(item["profit_ps"]*item["actual_qty"],2)
-                    margin_pct=round((item["profit_ps"]/_sell_r*100),1) if _sell_r>0 else 0
                     moq_note_txt=f"\n(MOQ {item['actual_qty']} sheets applied)" if item["moq_flag"] else ""
                     _ply_item_cca = item.get("cca", False)
                     _ply_cca_badge_html = (
@@ -2559,7 +2655,7 @@ with tab_ply:
                     ply_log.append({
                         "heading":f"{item['grade']} {item['thk']}mm{_ply_cca_badge_html}",
                         "rows":_ply_log_rows,
-                        "profit_line":f"S${profit_total:,.2f}","margin_pct":f"{margin_pct}%","small_qty":False,
+                        "profit_line":f"S${profit_total:,.2f}","small_qty":False,
                         "moq_flag":item["moq_flag"],"moq_note":f"min {item['actual_qty']} sheets (requested {item['qty']})"
                     })
                     if _ply_item_cca:
@@ -2585,7 +2681,8 @@ with tab_ply:
             if st.session_state.ply_ready:
                 render_quote_output("ply", save_type="Quote",
                     show_metrics=False, show_copy=True, show_clear=False,
-                    reply_height=300, file_prefix="ply_quote")
+                    reply_height=300, file_prefix="ply_quote",
+                    raw_items=normalize_items_for_negotiation(st.session_state.ply_items, "plywood"))
         else:
             st.info("Select a grade above, then add items to the order.")
             if st.button("🔄 Clear All & Start New Quote", use_container_width=True, key="ply_full_reset_empty"):
@@ -2654,7 +2751,6 @@ with tab_combined:
                     combined_total += gt
                     cost_est = round(gt * 0.85, 2); combined_cost += cost_est
                     profit = round(gt - cost_est, 2)
-                    margin_pct = round((profit / gt * 100), 1) if gt > 0 else 0
                     _cca_badge_html = (
                         ' <span style="font-size:11px;padding:1px 8px;border-radius:99px;'
                         'background:#1D9E75;color:white;margin-left:6px">🧪 CCA</span>'
@@ -2677,7 +2773,7 @@ with tab_combined:
                             "Qty":             f"{item['qty']} pcs",
                             "Line total":      f"S${gt:,.2f}",
                         },
-                        "profit_line": f"S${profit:,.2f}", "margin_pct": f"{margin_pct}%",
+                        "profit_line": f"S${profit:,.2f}",
                         "small_qty": item["small_qty"]
                     })
                     if _item_cca:
@@ -2702,7 +2798,6 @@ with tab_combined:
                     combined_item_count += 1
                     _sell_r = item.get("sell_rounded", ceil_10cents(item["sell"]))
                     profit_total = round(item["profit_ps"] * item["actual_qty"], 2)
-                    margin_pct = round((item["profit_ps"] / _sell_r * 100), 1) if _sell_r > 0 else 0
                     moq_note_txt = f"\n(MOQ {item['actual_qty']} sheets applied)" if item["moq_flag"] else ""
                     _ply_item_cca = item.get("cca", False)
                     _ply_cca_badge_html = (
@@ -2725,7 +2820,7 @@ with tab_combined:
                     combined_log.append({
                         "heading": f"{item['grade']} {item['thk']}mm{_ply_cca_badge_html}",
                         "rows": _ply_log_rows,
-                        "profit_line": f"S${profit_total:,.2f}", "margin_pct": f"{margin_pct}%", "small_qty": False,
+                        "profit_line": f"S${profit_total:,.2f}", "small_qty": False,
                         "moq_flag": item["moq_flag"], "moq_note": f"min {item['actual_qty']} sheets (requested {item['qty']})"
                     })
                     if "Fire Retardant" in item["grade"]:
@@ -2755,8 +2850,13 @@ with tab_combined:
             st.session_state.comb_nitem = combined_item_count; st.session_state.comb_log = combined_log
 
         if st.session_state.get("comb_ready"):
+            _comb_raw_items = (
+                normalize_items_for_negotiation(st.session_state.order_items, "timber") +
+                normalize_items_for_negotiation(st.session_state.ply_items, "plywood")
+            )
             render_quote_output("comb", save_type="Combined", show_copy=True, show_clear=True,
-                                 reply_height=350, file_prefix="combined_quote")
+                                 reply_height=350, file_prefix="combined_quote",
+                                 raw_items=_comb_raw_items)
 
     st.divider()
     st.caption("Starting a brand new quote? This clears customer info and every item currently "
@@ -2764,6 +2864,156 @@ with tab_combined:
                "back to default.")
     if st.button("🔄 Clear All & Start New Quote", use_container_width=True, key="comb_full_reset"):
         reset_all()
+
+# ============================================================
+# TAB — NEGOTIATION
+# ============================================================
+with tab_nego:
+    st.markdown("#### 🤝 Negotiation")
+    st.caption("Confirm pcs/ton for a size, work out a negotiated rate, then close the quote "
+               "with the final agreed figures. Works for a saved quote, or as a quick scratch "
+               "calculator with no quote at all.")
+
+    # ---------------------------------------------------------------
+    # SECTION A — pull up a saved quote
+    # ---------------------------------------------------------------
+    st.markdown("##### Find a saved quote")
+    with st.form("nego_search_form", clear_on_submit=False):
+        nsc1, nsc2 = st.columns([4, 1])
+        with nsc1:
+            _nego_search_input = st.text_input(
+                "Search", value=st.session_state.nego_search_val,
+                placeholder="Customer name or mobile",
+                key=f"nego_search_inp_{st.session_state.nego_search_ver}",
+                label_visibility="collapsed")
+        with nsc2:
+            _nego_search_btn = st.form_submit_button("🔍 Search", use_container_width=True)
+    if _nego_search_btn:
+        st.session_state.nego_search_val = _nego_search_input
+        st.session_state.nego_selected_qid = None
+
+    _nego_history = load_history()
+    _nego_matches = []
+    if st.session_state.nego_search_val.strip():
+        _nq = st.session_state.nego_search_val.strip().lower()
+        _nego_matches = [h for h in _nego_history
+                          if _nq in h.get("customer", "").lower() or _nq in h.get("mobile", "")]
+
+    if st.session_state.nego_search_val.strip():
+        if not _nego_matches:
+            st.info("No quotes match that search.")
+        else:
+            st.caption(f"{len(_nego_matches)} match(es) — click one to load it")
+            for _h in _nego_matches[:15]:
+                _picked_note = " ✅ Closed" if _h.get("closed") else ""
+                _label = f"{_h.get('customer','—')} · {_h.get('date','')} · SGD {float(_h.get('total',0)):,.2f}{_picked_note}"
+                if st.button(_label, key=f"nego_pick_{_h.get('id')}", use_container_width=True):
+                    st.session_state.nego_selected_qid = _h.get("id")
+                    st.session_state.nego_item_overrides[_h.get("id")] = {}
+                    st.rerun()
+
+    _selected = None
+    if st.session_state.nego_selected_qid:
+        _selected = next((h for h in _nego_history if h.get("id") == st.session_state.nego_selected_qid), None)
+
+    if _selected:
+        st.divider()
+        _qid = _selected.get("id")
+        st.markdown(f"**{_selected.get('customer','—')}** · {_selected.get('mobile','—')} · "
+                    f"quoted {_selected.get('date','')} · original total **S${float(_selected.get('total',0)):,.2f}**")
+
+        _items = _selected.get("items")
+        _overrides = st.session_state.nego_item_overrides.setdefault(_qid, {})
+
+        if not isinstance(_items, list) or not _items:
+            st.info("Itemized negotiation isn't available for this quote (saved before per-item "
+                    "tracking was added, or it has no items on record) — use the lump-sum override below instead.")
+        else:
+            for _idx, _it in enumerate(_items):
+                _ikey = f"{_qid}_{_idx}"
+                with st.container(border=True):
+                    if _it.get("kind") == "timber":
+                        _raw_pcs, _pcs, _price = calc_from_mm(
+                            _it["w_mm"], _it["h_mm"], _it["ft"], _it["rate"], _it.get("nom_w"), _it.get("nom_h"))
+                        st.markdown(f"**{_it.get('label','item')}** · qty {_it.get('qty',0)}  "
+                                    f"<span style='color:var(--color-text-secondary);font-size:12px'>pcs/ton: {_pcs}</span>",
+                                    unsafe_allow_html=True)
+                        st.caption(f"Original: S${_it['price_per_pc']}/pc · S${_it['rate']:,.0f}/ton")
+                        _new_pc, _new_ton = render_bidirectional_rate_calc(
+                            _ikey, _pcs, _it["rate"], _it["price_per_pc"])
+                        if st.button("Use this rate for this item", key=f"nego_use_{_ikey}"):
+                            _overrides[_idx] = round(_new_pc, 2)
+                            st.success(f"Set to S${_new_pc:,.2f}/pc for this item.")
+                    elif _it.get("kind") == "plywood":
+                        st.markdown(f"**{_it.get('label','item')}** · qty {_it.get('qty',0)}", unsafe_allow_html=True)
+                        st.caption(f"Original: S${_it['price_per_pc']}/sheet "
+                                   f"(plywood is priced per sheet, not per ton — no pcs/ton conversion here)")
+                        _ply_new_price = st.number_input(
+                            "Negotiated $/sheet", min_value=0.0, value=float(_it["price_per_pc"]),
+                            step=0.5, format="%.2f", key=f"nego_ply_price_{_ikey}")
+                        if st.button("Use this rate for this item", key=f"nego_use_{_ikey}"):
+                            _overrides[_idx] = round(_ply_new_price, 2)
+                            st.success(f"Set to S${_ply_new_price:,.2f}/sheet for this item.")
+                    else:
+                        st.caption(f"{_it.get('label','item')} — unrecognized item type, skipped.")
+
+                    if _idx in _overrides:
+                        st.caption(f"✓ Negotiated: S${_overrides[_idx]:,.2f} (was S${_it['price_per_pc']}) "
+                                   f"— not yet closed")
+
+        # ---- running total from per-item negotiation ----
+        _per_item_total = 0.0
+        if isinstance(_items, list):
+            for _idx, _it in enumerate(_items):
+                _price_used = _overrides.get(_idx, _it.get("price_per_pc", 0))
+                _per_item_total += _price_used * _it.get("qty", 0)
+        _per_item_total = round(_per_item_total, 2)
+
+        st.divider()
+        st.caption("Or override the whole quote as one lump sum (takes priority over per-item figures above if filled in):")
+        _lump_total = st.number_input("Final total (S$)", min_value=0.0, value=0.0, step=10.0,
+                                       format="%.2f", key=f"nego_lump_{_qid}")
+
+        _final_total = _lump_total if _lump_total > 0 else _per_item_total
+        _orig_total = float(_selected.get("total", 0))
+        _delta_pct = round((_final_total - _orig_total) / _orig_total * 100, 1) if _orig_total else 0
+        _delta_sign = "+" if _delta_pct > 0 else ""
+
+        st.markdown(
+            f'<div style="display:flex;justify-content:space-between;align-items:center;'
+            f'background:var(--bg-success);border-radius:var(--radius);padding:12px 16px">'
+            f'<span style="color:var(--text-success)">Final total: S${_final_total:,.2f} '
+            f'(quoted S${_orig_total:,.2f}, {_delta_sign}{_delta_pct}%)</span></div>',
+            unsafe_allow_html=True)
+
+        if st.button("✅ Close with these figures", type="primary", use_container_width=True, key=f"nego_close_{_qid}"):
+            if close_quote_negotiated(_qid, _final_total):
+                st.session_state.nego_item_overrides.pop(_qid, None)
+                st.session_state.nego_selected_qid = None
+                st.session_state.expiry_banner_checked = False
+                st.session_state.expiring_soon_checked = False
+                st.success("Closed with negotiated figures.")
+                st.rerun()
+            else:
+                st.error("Could not close — try refreshing.")
+
+    st.divider()
+
+    # ---------------------------------------------------------------
+    # SECTION B — quick scratch calculator (no saved quote needed)
+    # ---------------------------------------------------------------
+    st.markdown("##### Quick scratch calculator")
+    st.caption("No saved quote needed — just checking a size on the fly.")
+    sc1, sc2, sc3, sc4 = st.columns(4)
+    with sc1: _scr_w = st.number_input("Width (mm)", min_value=0.0, value=100.0, step=1.0, key="nego_scr_w")
+    with sc2: _scr_h = st.number_input("Height (mm)", min_value=0.0, value=50.0, step=1.0, key="nego_scr_h")
+    with sc3: _scr_ft = st.number_input("Length (ft)", min_value=0.5, value=10.0, step=0.5, key="nego_scr_ft")
+    with sc4: _scr_rate = st.number_input("Your normal rate (S$/ton)", min_value=0.0, value=3500.0, step=50.0, key="nego_scr_rate")
+
+    if _scr_w > 0 and _scr_h > 0 and _scr_ft > 0:
+        _scr_raw, _scr_pcs, _scr_price = calc_from_mm(_scr_w, _scr_h, _scr_ft, _scr_rate)
+        st.caption(f"pcs/ton: {_scr_pcs}  ·  at your normal rate this prices at S${_scr_price}/pc")
+        render_bidirectional_rate_calc("scratch", _scr_pcs, _scr_rate, _scr_price)
 
 # ============================================================
 # TAB 4 — SUPPLIERS
@@ -2775,18 +3025,18 @@ with tab_sup:
       <div class="sup-sub">Supplier 1 &nbsp;·&nbsp; Updated May 2026</div></div>
     </div>""", unsafe_allow_html=True)
 
-    sup1, sup2 = st.tabs(["📊 Cost vs Selling Price", "📈 Margin Summary"])
+    sup1, sup2 = st.tabs(["📊 Cost vs Selling Price", "📈 Profit Summary"])
     with sup1:
         grade_sel=st.selectbox("Select Grade",PLY_GRADES,key="sup_grade")
         if grade_sel in PLY_COST:
             rows=[]
             for thk,cost in sorted(PLY_COST[grade_sel].items()):
                 sell=PLY_SELL.get(grade_sel,{}).get(thk,0)
-                profit=round(sell-cost,2); margin=round((profit/sell*100),1) if sell>0 else 0
+                profit=round(sell-cost,2)
                 note=PLY_ACTUAL.get(grade_sel,{}).get(thk,"")
                 rows.append({"Thickness":f"{thk}mm"+(f" ({note})" if note else ""),
                     "Ying Chuan Cost":f"S${cost}","Your Selling Price":f"S${sell}",
-                    "Profit/sheet":f"S${profit}","Margin %":f"{margin}%"})
+                    "Profit/sheet":f"S${profit}"})
             render_table(rows)
         st.info("More suppliers can be added once you onboard them.")
 
@@ -2799,9 +3049,8 @@ with tab_sup:
             avg_sell=round(sum(sells)/len(sells),2) if sells else 0
             avg_cost=round(sum(costs)/len(costs),2) if costs else 0
             avg_profit=round(avg_sell-avg_cost,2)
-            avg_margin=round((avg_profit/avg_sell*100),1) if avg_sell>0 else 0
             margin_rows.append({"Grade":grade,"Avg Cost":f"S${avg_cost}","Avg Sell":f"S${avg_sell}",
-                "Avg Profit":f"S${avg_profit}","Avg Margin":f"{avg_margin}%"})
+                "Avg Profit":f"S${avg_profit}"})
         render_table(margin_rows)
 
 # ============================================================
@@ -2895,7 +3144,7 @@ with tab_hist:
 
         # ---- Overview metrics (based on full history, not the active filter) ----
         n_closed = sum(1 for q in history if q.get("closed", False))
-        closed_value = sum(float(q.get("total",0)) for q in history if q.get("closed", False))
+        closed_value = sum(float(q.get("closed_total", q.get("total",0))) for q in history if q.get("closed", False))
         closing_rate = round((n_closed / len(history) * 100), 1) if history else 0
 
         h1,h2,h3,h4=st.columns(4)
@@ -2915,7 +3164,7 @@ with tab_hist:
             _c_mobiles = sorted(set(q.get("mobile","—") for q in name_matched))
             _c_total = sum(float(q.get("total",0)) for q in name_matched)
             _c_closed = [q for q in name_matched if q.get("closed", False)]
-            _c_closed_value = sum(float(q.get("total",0)) for q in _c_closed)
+            _c_closed_value = sum(float(q.get("closed_total", q.get("total",0))) for q in _c_closed)
             _dates = [q.get("date","") for q in name_matched if q.get("date")]
             _date_range = f"{_dates[-1]} – {_dates[0]}" if len(_dates) > 1 else (_dates[0] if _dates else "—")
             _mobiles_note = f" ({', '.join(_c_mobiles)})" if len(_c_mobiles) > 1 else ""
@@ -2937,13 +3186,19 @@ with tab_hist:
             for i,q in enumerate(filtered):
                 name=q.get("customer","—"); mobile=q.get("mobile","—")
                 date=q.get("date","");      time=q.get("time","")
-                total=float(q.get("total",0)); profit=float(q.get("profit",0)); margin=float(q.get("margin",0))
+                total=float(q.get("total",0)); profit=float(q.get("profit",0))
                 text=q.get("text",""); qid=q.get("id",str(i)); qtype=q.get("type","Quote")
                 is_closed = q.get("closed", False); closed_date = q.get("closed_date","")
+                closed_total = q.get("closed_total")
                 is_expired = quote_is_expired(q) and not is_closed
                 type_icon={"Odd Size":"📐","Combined":"🔀"}.get(qtype,"📄")
                 status_badge = ""
-                if is_closed: status_badge = f" &nbsp;:violet-background[✅ Closed {closed_date}]"
+                if is_closed:
+                    if closed_total is not None and abs(closed_total - total) > 0.005:
+                        status_badge = (f" &nbsp;:violet-background[✅ Closed {closed_date} "
+                                        f"— Quoted S${total:,.2f} → Closed S${closed_total:,.2f}]")
+                    else:
+                        status_badge = f" &nbsp;:violet-background[✅ Closed {closed_date}]"
                 elif is_expired:
                     _vu = effective_valid_until(q)
                     _vu_disp = _vu.strftime("%d %b %Y") if _vu else "?"
@@ -2955,7 +3210,7 @@ with tab_hist:
                         _days_word = "day" if _days_left == 1 else "days"
                         status_badge = (f" &nbsp;:blue-background[Valid until "
                                         f"{_vu.strftime('%d %b %Y')} ({_days_left} {_days_word} left)]")
-                label=f"{type_icon} [{qtype}]  {date} {time}  ·  {name}  ·  {mobile}  ·  SGD {total:,.2f}  ·  Profit SGD {profit:,.2f}  ({margin}%){status_badge}{tag_badges_markdown(q.get('tags', []))}"
+                label=f"{type_icon} [{qtype}]  {date} {time}  ·  {name}  ·  {mobile}  ·  SGD {total:,.2f}  ·  Profit SGD {profit:,.2f}{status_badge}{tag_badges_markdown(q.get('tags', []))}"
                 with st.expander(label):
                     st.text_area("Full quote",value=text,height=300,key=f"qt_{i}_{qid}")
 
