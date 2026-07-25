@@ -3174,42 +3174,34 @@ with tab_hist:
     st.markdown("#### 🕘 Quote History")
     st.caption("Search by customer name or mobile.")
 
-    def _follow_up_row(_q, _detail_text):
-        _fc1, _fc2 = st.columns([5, 1])
-        with _fc1:
-            st.markdown(
-                f"&nbsp;&nbsp;• {_q.get('customer','—')} — {_detail_text}"
-                f"{tag_badges_markdown(_q.get('tags', []))}"
-            )
-        with _fc2:
-            if st.button("🔗 Follow up", key=f"followup_{_q.get('id','')}",
-                          use_container_width=True):
-                st.session_state.hist_search_val = _q.get("customer", "")
-                st.session_state.hist_search_ver += 1
-                st.rerun()
-
     _expired_list = st.session_state.get("expiry_banner_list", [])
+    _soon_list = st.session_state.get("expiring_soon_list", [])
+
     if _expired_list:
         _n_expired = len(_expired_list)
-        st.error(f"❌ {_n_expired} quote{'s' if _n_expired != 1 else ''} expired this week — needs follow-up")
-        for _q in _expired_list:
-            _vu = effective_valid_until(_q)
-            _follow_up_row(_q, f"expired {_vu.strftime('%d %b %Y')}")
+        _bc1, _bc2 = st.columns([5, 1])
+        with _bc1:
+            st.error(f"❌ {_n_expired} quote{'s' if _n_expired != 1 else ''} expired this week — needs follow-up")
+        with _bc2:
+            if st.button("View", key="jump_expired_banner", use_container_width=True):
+                st.session_state.hist_status_filter = "expired"
+                st.rerun()
 
-    _soon_list = st.session_state.get("expiring_soon_list", [])
     if _soon_list:
         _n_soon = len(_soon_list)
-        st.warning(
-            f"⏰ {_n_soon} quote{'s' if _n_soon != 1 else ''} expiring soon (within "
-            f"{EXPIRING_SOON_WORKING_DAYS} working days)"
-        )
-        for _q in _soon_list:
-            _vu = effective_valid_until(_q)
-            _days_left = (_vu.date() - now_sgt().date()).days
-            _when = "today" if _days_left == 0 else f"in {_days_left} day{'s' if _days_left != 1 else ''}"
-            _follow_up_row(_q, f"expires {_when} ({_vu.strftime('%d %b %Y')})")
+        _bc1, _bc2 = st.columns([5, 1])
+        with _bc1:
+            st.warning(
+                f"⏰ {_n_soon} quote{'s' if _n_soon != 1 else ''} expiring soon (within "
+                f"{EXPIRING_SOON_WORKING_DAYS} working days)"
+            )
+        with _bc2:
+            if st.button("View", key="jump_soon_banner", use_container_width=True):
+                st.session_state.hist_status_filter = "expiring_3d"
+                st.rerun()
 
     if _expired_list or _soon_list:
+        st.caption("Tap View, or use the pills below, to see and follow up on these quotes.")
         st.divider()
 
     with st.form("hist_search_form",clear_on_submit=False):
