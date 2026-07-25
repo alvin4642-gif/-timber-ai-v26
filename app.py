@@ -21,6 +21,13 @@ QUOTE_VALIDITY_DAYS = 7  # how many days a quotation stays valid from date of is
 
 EXPIRING_SOON_WORKING_DAYS = 3  # flag quotes expiring within this many working days
 
+# Soft grace buffer: quotes are still shown as usable for this many days past
+# their valid_until date (e.g. moon-sighting holiday dates shifting by a day
+# or two shouldn't turn away a customer with a technically-lapsed quote).
+# This never blocks any action — it only softens the "Expired" badge wording
+# so it reads as still-actionable rather than a hard stop.
+EXPIRY_GRACE_DAYS = 2
+
 # Singapore public holidays 2026 (11 gazetted + in-lieu Mondays for the
 # 3 that fall on a Sunday). Update this list every year — MOM publishes
 # the following year's dates around mid-year.
@@ -59,7 +66,7 @@ def add_working_days(start_date, n):
             counted += 1
     return d
 
-st.set_page_config(layout="wide", page_title="Timber AI Assistant V34", page_icon="🪵")
+st.set_page_config(layout="wide", page_title="Timber AI Assistant V35", page_icon="🪵")
 
 # ============================================================
 # CSS
@@ -488,9 +495,7 @@ PLY_COST = {
     "Marine BS1088":         {9:30.0,   12:38.3,  15:46.2,  18:56.7,   25:77.7},
     "T2 Marine":             {6:17.5,   9:20.0,   12:26.0,  15:31.0,   18:36.0,   25:48.0},
     "Fire Retardant BS476":  {3:14.0,   6:26.0,   9:37.0,   12:49.0,   15:63.0,   18:70.0,  25:80.0},
-    # TODO (Alvin): cost price to be updated — placeholder S$0.00 means profit
-    # will show as 100% until this is filled in. Don't quote off this until updated.
-    "Birch Plywood":         {15:0.0,   18:0.0},
+    "Birch Plywood":         {15:52.0,  18:68.0},
 }
 # Tiered selling price — ONLY for grades where price/sheet changes based on qty
 # ordered (unlike PLY_MOQ below, which bumps qty up but keeps price fixed).
@@ -598,7 +603,7 @@ def reset_all():
 st.markdown("""
 <div class="app-header">
   <div class="app-header-title">🪵 Timber AI Assistant
-    <span style="background:#1D9E75;color:white;font-size:13px;padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle">V34</span>
+    <span style="background:#1D9E75;color:white;font-size:13px;padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle">V35</span>
   </div>
   <div class="app-header-sub">Professional Quoting System &nbsp;·&nbsp; Prices in SGD</div>
 </div>
@@ -846,6 +851,36 @@ def quote_is_expired(q):
     if valid_until is None:
         return False
     return now_sgt().replace(tzinfo=None) > valid_until
+
+def quote_in_grace_period(q):
+    """True if the quote is expired but still within the EXPIRY_GRACE_DAYS
+    soft buffer — i.e. still fine to honour, just past its printed date."""
+    valid_until = effective_valid_until(q)
+    if valid_until is None:
+        return False
+    now = now_sgt().replace(tzinfo=None)
+    if now <= valid_until:
+        return False
+    return now <= valid_until + timedelta(days=EXPIRY_GRACE_DAYS)
+
+def classify_quote_status(q):
+    """Buckets a quote into exactly one History-tab status group:
+    'closed', 'expired', 'expiring_3d', 'expiring_7d', or 'active'.
+    Mutually exclusive so pill counts and filtering line up 1:1."""
+    if q.get("closed", False):
+        return "closed"
+    if quote_is_expired(q):
+        return "expired"
+    _vu = effective_valid_until(q)
+    if _vu is None:
+        return "active"
+    _today = now_sgt().date()
+    _soon_cutoff_3d = add_working_days(_today, EXPIRING_SOON_WORKING_DAYS)
+    if _vu.date() <= _soon_cutoff_3d:
+        return "expiring_3d"
+    if (_vu.date() - _today).days <= 7:
+        return "expiring_7d"
+    return "active"
 
 # Preset follow-up tags a quote can carry. Grouped by category, but a quote
 # may carry any combination of tags at once (e.g. "WhatsApp" + "Tender").
@@ -1452,7 +1487,7 @@ def parsed_to_odd_item(p, species_rate_map):
     }
 
 # ============================================================
-# SHARED UI HELPERS (V34) — used by Quote Builder / Odd Size /
+# SHARED UI HELPERS (V35) — used by Quote Builder / Odd Size /
 # Plywood tabs to avoid triplicated card/pricing/output code.
 # ============================================================
 
@@ -3206,20 +3241,45 @@ with tab_hist:
             or active_search in q.get("mobile","")
         ] if active_search else history
 
-        # ---- Type filter + Closed-only filter ----
+        # ---- Type filter ----
         _type_options = ["All"] + sorted(set(q.get("type","Quote") for q in history))
-        ft1, ft2 = st.columns([3,1])
-        with ft1:
-            type_filter = st.radio("Quote type", _type_options, horizontal=True,
-                key="hist_type_filter", label_visibility="collapsed")
-        with ft2:
-            closed_only = st.checkbox("Closed only", key="hist_closed_only")
+        type_filter = st.radio("Quote type", _type_options, horizontal=True,
+            key="hist_type_filter", label_visibility="collapsed")
 
-        filtered = name_matched
+        type_filtered = name_matched
         if type_filter != "All":
-            filtered = [q for q in filtered if q.get("type","Quote")==type_filter]
-        if closed_only:
-            filtered = [q for q in filtered if q.get("closed", False)]
+            type_filtered = [q for q in type_filtered if q.get("type","Quote")==type_filter]
+
+        # ---- Status pills (search + type filter applied first, so counts reflect what's on screen) ----
+        if "hist_status_filter" not in st.session_state:
+            st.session_state.hist_status_filter = "all"
+        _status_counts = {"all": len(type_filtered)}
+        for _q in type_filtered:
+            _g = classify_quote_status(_q)
+            _status_counts[_g] = _status_counts.get(_g, 0) + 1
+        _pill_defs = [
+            ("all",         "All"),
+            ("expiring_3d", "Expiring 3d"),
+            ("expiring_7d", "Expiring 7d"),
+            ("active",      "Active"),
+            ("closed",      "Closed"),
+            ("expired",     "Expired"),
+        ]
+        _pill_cols = st.columns(len(_pill_defs))
+        for _col, (_key, _label) in zip(_pill_cols, _pill_defs):
+            with _col:
+                _n = _status_counts.get(_key, 0)
+                _btn_type = "primary" if st.session_state.hist_status_filter == _key else "secondary"
+                if st.button(f"{_label} ({_n})", key=f"histpill_{_key}",
+                             type=_btn_type, use_container_width=True):
+                    st.session_state.hist_status_filter = _key
+                    st.rerun()
+        status_filter = st.session_state.hist_status_filter
+
+        if status_filter == "all":
+            filtered = type_filtered
+        else:
+            filtered = [q for q in type_filtered if classify_quote_status(q) == status_filter]
 
         # ---- Overview metrics (based on full history, not the active filter) ----
         n_closed = sum(1 for q in history if q.get("closed", False))
@@ -3257,71 +3317,111 @@ with tab_hist:
                 f'</div></div>', unsafe_allow_html=True
             )
 
-        if active_search or type_filter != "All" or closed_only:
+        def _render_history_item(q, key_suffix):
+            name=q.get("customer","—"); mobile=q.get("mobile","—")
+            date=q.get("date","");      time=q.get("time","")
+            total=float(q.get("total",0)); profit=float(q.get("profit",0))
+            text=q.get("text",""); qid=q.get("id",key_suffix); qtype=q.get("type","Quote")
+            is_closed = q.get("closed", False); closed_date = q.get("closed_date","")
+            closed_total = q.get("closed_total")
+            is_expired = quote_is_expired(q) and not is_closed
+            type_icon={"Odd Size":"📐","Combined":"🔀"}.get(qtype,"📄")
+            status_badge = ""
+            if is_closed:
+                if closed_total is not None and abs(closed_total - total) > 0.005:
+                    status_badge = (f" &nbsp;:violet-background[✅ Closed {closed_date} "
+                                    f"— Quoted S${total:,.2f} → Closed S${closed_total:,.2f}]")
+                else:
+                    status_badge = f" &nbsp;:violet-background[✅ Closed {closed_date}]"
+            elif is_expired:
+                _vu = effective_valid_until(q)
+                _vu_disp = _vu.strftime("%d %b %Y") if _vu else "?"
+                if quote_in_grace_period(q):
+                    status_badge = f" &nbsp;:orange-background[🕗 Grace period (valid until {_vu_disp}) — still ok to honour]"
+                else:
+                    status_badge = f" &nbsp;:orange-background[⏰ Expired (valid until {_vu_disp})]"
+            else:
+                _vu = effective_valid_until(q)
+                if _vu:
+                    _days_left = (_vu.date() - now_sgt().date()).days
+                    _days_word = "day" if _days_left == 1 else "days"
+                    status_badge = (f" &nbsp;:blue-background[Valid until "
+                                    f"{_vu.strftime('%d %b %Y')} ({_days_left} {_days_word} left)]")
+            label=f"{type_icon} [{qtype}]  {date} {time}  ·  {name}  ·  {mobile}  ·  SGD {total:,.2f}  ·  Profit SGD {profit:,.2f}{status_badge}{tag_badges_markdown(q.get('tags', []))}"
+            with st.expander(label):
+                st.text_area("Full quote",value=text,height=300,key=f"qt_{key_suffix}")
+
+                st.caption("Follow-up tags")
+                _current_tags = q.get("tags", [])
+                _new_tags = render_tag_pills(_current_tags, key_prefix=f"hist_{key_suffix}")
+                if _new_tags != _current_tags:
+                    if set_quote_tags(qid, _new_tags):
+                        st.rerun()
+                    else:
+                        st.error("Could not save tags — try refreshing.")
+
+                hb1,hb2,hb3=st.columns(3)
+                with hb1:
+                    clipboard_copy_button(text, key=f"hist_{key_suffix}")
+                with hb2:
+                    if is_closed:
+                        st.button(f"✅ Closed on {closed_date}", key=f"closed_{key_suffix}",
+                                  disabled=True, use_container_width=True)
+                    else:
+                        if st.button("✅ Mark closed", key=f"markclosed_{key_suffix}", use_container_width=True):
+                            if mark_quote_closed(qid):
+                                st.session_state.expiry_banner_checked = False
+                                st.session_state.expiring_soon_checked = False
+                                st.success("Marked as closed."); st.rerun()
+                            else: st.error("Could not update — try refreshing.")
+                with hb3:
+                    if st.button("🗑️ Delete",key=f"dh_{key_suffix}",use_container_width=True):
+                        delete_quote(qid); st.success("Deleted."); st.rerun()
+
+        if active_search or type_filter != "All" or status_filter != "all":
             st.caption(f"{len(filtered)} quote(s) found")
         if not filtered:
             st.info("No quotes match your search/filter.")
+        elif status_filter == "closed":
+            # Grouped by the month the quote was closed, collapsed by default —
+            # tap a month's header to expand it.
+            month_groups = {}
+            for q in filtered:
+                _cd = q.get("closed_date","")
+                try:
+                    _dt = datetime.strptime(_cd, "%d %b %Y")
+                    _mkey = (_dt.year, _dt.month)
+                    _mlabel = _dt.strftime("%B %Y")
+                except ValueError:
+                    _mkey = (0, 0)
+                    _mlabel = "Unknown month"
+                month_groups.setdefault(_mkey, {"label": _mlabel, "items": []})
+                month_groups[_mkey]["items"].append(q)
+
+            if "hist_open_months" not in st.session_state:
+                st.session_state.hist_open_months = set()
+
+            for _mkey in sorted(month_groups.keys(), reverse=True):
+                _grp = month_groups[_mkey]
+                _mkey_str = f"{_mkey[0]}_{_mkey[1]}"
+                _is_open = _mkey_str in st.session_state.hist_open_months
+                _arrow = "▾" if _is_open else "▸"
+                if st.button(f"{_arrow} {_grp['label']} ({len(_grp['items'])})",
+                             key=f"monthtoggle_{_mkey_str}", use_container_width=True):
+                    if _is_open:
+                        st.session_state.hist_open_months.discard(_mkey_str)
+                    else:
+                        st.session_state.hist_open_months.add(_mkey_str)
+                    st.rerun()
+                if _is_open:
+                    for _idx, q in enumerate(_grp["items"]):
+                        _render_history_item(q, key_suffix=f"closed_{_mkey_str}_{_idx}_{q.get('id','')}")
         else:
             for i,q in enumerate(filtered):
-                name=q.get("customer","—"); mobile=q.get("mobile","—")
-                date=q.get("date","");      time=q.get("time","")
-                total=float(q.get("total",0)); profit=float(q.get("profit",0))
-                text=q.get("text",""); qid=q.get("id",str(i)); qtype=q.get("type","Quote")
-                is_closed = q.get("closed", False); closed_date = q.get("closed_date","")
-                closed_total = q.get("closed_total")
-                is_expired = quote_is_expired(q) and not is_closed
-                type_icon={"Odd Size":"📐","Combined":"🔀"}.get(qtype,"📄")
-                status_badge = ""
-                if is_closed:
-                    if closed_total is not None and abs(closed_total - total) > 0.005:
-                        status_badge = (f" &nbsp;:violet-background[✅ Closed {closed_date} "
-                                        f"— Quoted S${total:,.2f} → Closed S${closed_total:,.2f}]")
-                    else:
-                        status_badge = f" &nbsp;:violet-background[✅ Closed {closed_date}]"
-                elif is_expired:
-                    _vu = effective_valid_until(q)
-                    _vu_disp = _vu.strftime("%d %b %Y") if _vu else "?"
-                    status_badge = f" &nbsp;:orange-background[⏰ Expired (valid until {_vu_disp})]"
-                else:
-                    _vu = effective_valid_until(q)
-                    if _vu:
-                        _days_left = (_vu.date() - now_sgt().date()).days
-                        _days_word = "day" if _days_left == 1 else "days"
-                        status_badge = (f" &nbsp;:blue-background[Valid until "
-                                        f"{_vu.strftime('%d %b %Y')} ({_days_left} {_days_word} left)]")
-                label=f"{type_icon} [{qtype}]  {date} {time}  ·  {name}  ·  {mobile}  ·  SGD {total:,.2f}  ·  Profit SGD {profit:,.2f}{status_badge}{tag_badges_markdown(q.get('tags', []))}"
-                with st.expander(label):
-                    st.text_area("Full quote",value=text,height=300,key=f"qt_{i}_{qid}")
-
-                    st.caption("Follow-up tags")
-                    _current_tags = q.get("tags", [])
-                    _new_tags = render_tag_pills(_current_tags, key_prefix=f"hist_{i}_{qid}")
-                    if _new_tags != _current_tags:
-                        if set_quote_tags(qid, _new_tags):
-                            st.rerun()
-                        else:
-                            st.error("Could not save tags — try refreshing.")
-
-                    hb1,hb2,hb3=st.columns(3)
-                    with hb1:
-                        clipboard_copy_button(text, key=f"hist_{i}_{qid}")
-                    with hb2:
-                        if is_closed:
-                            st.button(f"✅ Closed on {closed_date}", key=f"closed_{i}_{qid}",
-                                      disabled=True, use_container_width=True)
-                        else:
-                            if st.button("✅ Mark closed", key=f"markclosed_{i}_{qid}", use_container_width=True):
-                                if mark_quote_closed(qid):
-                                    st.session_state.expiry_banner_checked = False
-                                    st.session_state.expiring_soon_checked = False
-                                    st.success("Marked as closed."); st.rerun()
-                                else: st.error("Could not update — try refreshing.")
-                    with hb3:
-                        if st.button("🗑️ Delete",key=f"dh_{i}_{qid}",use_container_width=True):
-                            delete_quote(qid); st.success("Deleted."); st.rerun()
+                _render_history_item(q, key_suffix=f"{i}_{q.get('id', i)}")
 
 # ============================================================
 # FOOTER
 # ============================================================
 st.markdown("---")
-st.caption("Timber AI Assistant V34  · ALVIN  ")
+st.caption("Timber AI Assistant V35  · ALVIN  ")
