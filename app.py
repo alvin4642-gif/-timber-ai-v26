@@ -2522,8 +2522,39 @@ with tab_ply:
                     if note: notes.append(note)
                     if moq>1: notes.append(f"MOQ {moq} sheets")
                     tbl_rows.append({"Thickness":f"{thk}mm","YC Cost":f"S${cost}","Sell Price":f"S${sell_def}",
-                        "Profit":f"S${profit}","Notes":" · ".join(notes) if notes else "—"})
+                        "Profit":f"S${profit}","Margin %":f"{round(profit/sell_def*100,1) if sell_def else 0}%",
+                        "Notes":" · ".join(notes) if notes else "—"})
                 render_table(tbl_rows)
+
+        if sel in PLY_SELL:
+            _ref_thk_options = sorted(PLY_SELL[sel].keys())
+            with st.expander(f"✏️ Update cost price for {sel}", expanded=False):
+                _ref_thk_key = f"refthk_{sel}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
+                ref_thk = st.selectbox("Thickness (mm)", _ref_thk_options, key=_ref_thk_key)
+                ref_cost_def = effective_ply_cost(sel, ref_thk)
+                _new_cost_key=f"newcost_{sel}_{ref_thk}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
+                nc1, nc2 = st.columns([2,1])
+                with nc1:
+                    new_cost_val = st.number_input("New cost price (S$/sheet)", min_value=0.0,
+                        value=float(ref_cost_def), step=0.5, format="%.2f", key=_new_cost_key)
+                with nc2:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("💾 Save cost price", key=f"savecost_{_new_cost_key}", use_container_width=True):
+                        if update_ply_cost(sel, ref_thk, new_cost_val):
+                            st.success(f"✅ Cost updated: S${ref_cost_def:.2f} → S${new_cost_val:.2f}")
+                            st.rerun()
+                        else:
+                            st.error("❌ Could not save — check gist_id / github_token in Streamlit secrets.")
+                _rlog = load_ply_rate_log()
+                _rlog_here = [r for r in _rlog if r["grade"]==sel and r["thk"]==ref_thk]
+                if _rlog_here:
+                    st.caption("Rate history for this item:")
+                    render_table([
+                        {"Date": f'{r["date"]} {r["time"]}', "Old cost": f'S${r["old_cost"]}', "New cost": f'S${r["new_cost"]}'}
+                        for r in _rlog_here[:10]
+                    ])
+                else:
+                    st.caption("No cost changes recorded yet for this item.")
 
         st.divider()
         render_customer_section("ply")
@@ -2574,31 +2605,6 @@ with tab_ply:
         if p_sell_def==0.0: st.warning("⚠️ Selling price is S$0.00 — check price table.")
         if p_cost_def==0.0: st.caption("⚠️ Cost price not yet set for this item — profit shown will be inaccurate until updated.")
 
-        with st.expander(f"✏️ Update cost price for {p_grade} {p_thk}mm", expanded=False):
-            _new_cost_key=f"newcost_{p_grade}_{p_thk}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
-            nc1, nc2 = st.columns([2,1])
-            with nc1:
-                new_cost_val = st.number_input("New cost price (S$/sheet)", min_value=0.0,
-                    value=float(p_cost_def), step=0.5, format="%.2f", key=_new_cost_key)
-            with nc2:
-                st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("💾 Save cost price", key=f"savecost_{_new_cost_key}", use_container_width=True):
-                    if update_ply_cost(p_grade, p_thk, new_cost_val):
-                        st.success(f"✅ Cost updated: S${p_cost_def:.2f} → S${new_cost_val:.2f}")
-                        st.rerun()
-                    else:
-                        st.error("❌ Could not save — check gist_id / github_token in Streamlit secrets.")
-            _rlog = load_ply_rate_log()
-            _rlog_here = [r for r in _rlog if r["grade"]==p_grade and r["thk"]==p_thk]
-            if _rlog_here:
-                st.caption("Rate history for this item:")
-                render_table([
-                    {"Date": f'{r["date"]} {r["time"]}', "Old cost": f'S${r["old_cost"]}', "New cost": f'S${r["new_cost"]}'}
-                    for r in _rlog_here[:10]
-                ])
-            else:
-                st.caption("No cost changes recorded yet for this item.")
-
         if add_ply:
             p_qty_f = max(int(st.session_state.get("ply_qty_inp", 1)), 1)
             # Recompute tier at the final qty in case it changed after the price field was drawn
@@ -2626,13 +2632,13 @@ with tab_ply:
             for i,item in enumerate(st.session_state.ply_items):
                 _ply_cca_on = item.get("cca", False)
                 _ply_profit_total = round(item['profit_ps']*item['actual_qty'],2)
-                _ply_pills = [f"{item['thk']}mm"]
+                _ply_pills = []
                 if item["moq_flag"]:
                     _ply_pills.append("⚠️ MOQ")
 
                 _ply_sell_r = item.get("sell_rounded", ceil_10cents(item["sell"]))
                 render_item_card(
-                    title=item['grade'],
+                    title=f"{item['grade']} {item['thk']}mm",
                     pills=_ply_pills,
                     detail_line=f"Profit: S${_ply_profit_total:,.2f}",
                     price_line=price_line_with_cca(_ply_sell_r, _ply_cca_on, cca_rate,
@@ -2655,10 +2661,11 @@ with tab_ply:
             ply_cost_total=round(sum(x["cost"]*x["actual_qty"] for x in st.session_state.ply_items),2)
             ply_profit=round(ply_grand-ply_cost_total,2)
 
-            pm1,pm2,pm3=st.columns(3)
+            pm1,pm2,pm3,pm4=st.columns(4)
             with pm1: st.metric("Items Quoted",len(st.session_state.ply_items))
             with pm2: st.metric("Plywood Total",f"S${ply_grand:,.2f}")
             with pm3: st.metric("Profit",f"S${ply_profit:,.2f}")
+            with pm4: st.metric("Margin %", f"{round(ply_profit/ply_grand*100,1) if ply_grand else 0}%")
 
             ply_valid_days = st.slider("Quote validity (days)", min_value=1, max_value=30,
                 value=st.session_state.get("ply_valid_days", QUOTE_VALIDITY_DAYS), key="ply_valid_days")
