@@ -1290,7 +1290,7 @@ def render_table(rows):
     html += '</tbody></table>'
     st.markdown(html, unsafe_allow_html=True)
 
-def render_staff_log(log_items, grand_total, cost_total):
+def render_staff_log(log_items, grand_total, cost_total, show_margin=False):
     profit = round(grand_total - cost_total, 2)
     html = '<div class="staff-log"><div class="staff-log-header">Staff Calculation Log</div>'
     for i, item in enumerate(log_items, 1):
@@ -1300,11 +1300,18 @@ def render_staff_log(log_items, grand_total, cost_total):
         html += '<div class="log-item">'
         html += f'<div class="log-item-head"><span class="log-num">{i}</span>{item["heading"]}</div>'
         html += f'<div class="log-grid">{grid}<span class="log-label">Profit</span>'
-        html += f'<span class="log-profit">{item.get("profit_line","")}{warn}</span></div>'
+        html += f'<span class="log-profit">{item.get("profit_line","")}{warn}</span>'
+        if show_margin and item.get("margin_line"):
+            html += f'<span class="log-label">Margin %</span><span class="log-profit">{item["margin_line"]}</span>'
+        html += '</div>'
         html += moq_div + '</div>'
     html += '<div class="log-total">'
     html += f'<div class="log-total-label">Grand total &nbsp;&middot;&nbsp; {len(log_items)} item(s)</div>'
-    html += f'<div><span class="log-total-val">S${grand_total:,.2f}</span> <span class="profit-chip">Profit S${profit:,.2f}</span></div>'
+    _margin_chip = ""
+    if show_margin:
+        _margin_pct = round(profit / grand_total * 100, 1) if grand_total else 0
+        _margin_chip = f' <span class="profit-chip">Margin {_margin_pct}%</span>'
+    html += f'<div><span class="log-total-val">S${grand_total:,.2f}</span> <span class="profit-chip">Profit S${profit:,.2f}</span>{_margin_chip}</div>'
     html += '</div></div>'
     st.markdown(html, unsafe_allow_html=True)
 
@@ -1618,7 +1625,7 @@ def render_item_card(title, pills, detail_line, price_line, warn=False,
 def render_quote_output(prefix, extra_clear_keys=None, save_type=None,
                          show_metrics=True, show_staff_log=True,
                          show_copy=True, show_clear=True, reply_height=350,
-                         file_prefix=None, raw_items=None):
+                         file_prefix=None, raw_items=None, show_margin=False):
     """Renders staff log + reply textarea + action buttons.
     save_type=None disables the Save to History button.
     show_metrics/show_staff_log/show_copy/show_clear let a tab opt out of
@@ -1634,7 +1641,7 @@ def render_quote_output(prefix, extra_clear_keys=None, save_type=None,
         with m2: st.metric("Grand Total", f"S${grand_total:,.2f}")
         with m3: st.metric("Est. Profit", f"S${round(grand_total - cost_total, 2):,.2f}")
     if show_staff_log:
-        render_staff_log(ss[f"{prefix}_log"], grand_total, cost_total)
+        render_staff_log(ss[f"{prefix}_log"], grand_total, cost_total, show_margin=show_margin)
     st.divider()
     st.subheader("Customer Reply (edit before sending)")
     edited = st.text_area("", ss[f"{prefix}_reply"], height=reply_height, key=f"cust_reply_{prefix}")
@@ -2700,11 +2707,12 @@ with tab_ply:
                         _ply_log_rows["CCA rate/sheet"]       = f"+ S${cca_rate:.2f} ({cca_colour})"
                         _ply_log_rows["Combined price/sheet"] = f"S${_combined_ply:.2f}"
                     _ply_log_rows["Qty"]        = f"{item['actual_qty']} sheets"
-                    _ply_log_rows["Line total"] = f"S${_ply_line_total:,.2f}"
+                    _ply_log_rows["Total Amount"] = f"S${_ply_line_total:,.2f}"
+                    _ply_margin_pct = round(profit_total / _ply_line_total * 100, 1) if _ply_line_total else 0
                     ply_log.append({
                         "heading":f"{item['grade']} {item['thk']}mm{_ply_cca_badge_html}",
                         "rows":_ply_log_rows,
-                        "profit_line":f"S${profit_total:,.2f}","small_qty":False,
+                        "profit_line":f"S${profit_total:,.2f}","margin_line":f"{_ply_margin_pct}%","small_qty":False,
                         "moq_flag":item["moq_flag"],"moq_note":f"min {item['actual_qty']} sheets (requested {item['qty']})"
                     })
                     if _ply_item_cca:
@@ -2730,7 +2738,7 @@ with tab_ply:
             if st.session_state.ply_ready:
                 render_quote_output("ply", save_type="Quote",
                     show_metrics=False, show_copy=True, show_clear=False,
-                    reply_height=300, file_prefix="ply_quote",
+                    reply_height=300, file_prefix="ply_quote", show_margin=True,
                     raw_items=normalize_items_for_negotiation(st.session_state.ply_items, "plywood"))
         else:
             st.info("Select a grade above, then add items to the order.")
