@@ -909,6 +909,13 @@ def tag_pill_label(tag_key):
 
 QUOTE_TAG_CATEGORIES = ["Source", "Stage", "Status"]
 
+# Tags that signal a quote needs active follow-up (shown in the History tab's
+# "Follow up" pill) — a cross-cutting filter independent of expiry status.
+FOLLOW_UP_TAG_KEYS = {"src_whatsapp", "src_email", "status_call_back", "status_not_interested"}
+
+def quote_needs_followup(q):
+    return any(t in FOLLOW_UP_TAG_KEYS for t in q.get("tags", []))
+
 def tag_keys_for_category(category):
     return [k for k, d in QUOTE_TAG_DEFS.items() if d["category"] == category]
 
@@ -3174,8 +3181,27 @@ with tab_hist:
     st.markdown("#### 🕘 Quote History")
     st.caption("Search by customer name or mobile.")
 
+    def _follow_up_row(_q, _detail_text):
+        _fc1, _fc2 = st.columns([5, 1])
+        with _fc1:
+            st.markdown(
+                f"&nbsp;&nbsp;• {_q.get('customer','—')} — {_detail_text}"
+                f"{tag_badges_markdown(_q.get('tags', []))}"
+            )
+        with _fc2:
+            if st.button("🔗 Follow up", key=f"followup_{_q.get('id','')}",
+                          use_container_width=True):
+                st.session_state.hist_search_val = _q.get("customer", "")
+                st.session_state.hist_search_ver += 1
+                st.rerun()
+
     _expired_list = st.session_state.get("expiry_banner_list", [])
     _soon_list = st.session_state.get("expiring_soon_list", [])
+
+    if "hist_banner_expired_open" not in st.session_state:
+        st.session_state.hist_banner_expired_open = False
+    if "hist_banner_soon_open" not in st.session_state:
+        st.session_state.hist_banner_soon_open = False
 
     if _expired_list:
         _n_expired = len(_expired_list)
@@ -3183,9 +3209,14 @@ with tab_hist:
         with _bc1:
             st.error(f"❌ {_n_expired} quote{'s' if _n_expired != 1 else ''} expired this week — needs follow-up")
         with _bc2:
-            if st.button("View", key="jump_expired_banner", use_container_width=True):
-                st.session_state.hist_status_filter = "expired"
+            _lbl = "Hide" if st.session_state.hist_banner_expired_open else "View"
+            if st.button(_lbl, key="toggle_expired_banner", use_container_width=True):
+                st.session_state.hist_banner_expired_open = not st.session_state.hist_banner_expired_open
                 st.rerun()
+        if st.session_state.hist_banner_expired_open:
+            for _q in _expired_list:
+                _vu = effective_valid_until(_q)
+                _follow_up_row(_q, f"expired {_vu.strftime('%d %b %Y')}")
 
     if _soon_list:
         _n_soon = len(_soon_list)
@@ -3196,12 +3227,18 @@ with tab_hist:
                 f"{EXPIRING_SOON_WORKING_DAYS} working days)"
             )
         with _bc2:
-            if st.button("View", key="jump_soon_banner", use_container_width=True):
-                st.session_state.hist_status_filter = "expiring_3d"
+            _lbl = "Hide" if st.session_state.hist_banner_soon_open else "View"
+            if st.button(_lbl, key="toggle_soon_banner", use_container_width=True):
+                st.session_state.hist_banner_soon_open = not st.session_state.hist_banner_soon_open
                 st.rerun()
+        if st.session_state.hist_banner_soon_open:
+            for _q in _soon_list:
+                _vu = effective_valid_until(_q)
+                _days_left = (_vu.date() - now_sgt().date()).days
+                _when = "today" if _days_left == 0 else f"in {_days_left} day{'s' if _days_left != 1 else ''}"
+                _follow_up_row(_q, f"expires {_when} ({_vu.strftime('%d %b %Y')})")
 
     if _expired_list or _soon_list:
-        st.caption("Tap View, or use the pills below, to see and follow up on these quotes.")
         st.divider()
 
     with st.form("hist_search_form",clear_on_submit=False):
@@ -3245,15 +3282,17 @@ with tab_hist:
         # ---- Status pills (search + type filter applied first, so counts reflect what's on screen) ----
         if "hist_status_filter" not in st.session_state:
             st.session_state.hist_status_filter = "all"
-        _status_counts = {"all": len(type_filtered)}
+        _status_counts = {"all": len(type_filtered), "followup": 0}
         for _q in type_filtered:
             _g = classify_quote_status(_q)
             _status_counts[_g] = _status_counts.get(_g, 0) + 1
+            if quote_needs_followup(_q):
+                _status_counts["followup"] += 1
         _pill_defs = [
             ("all",         "All"),
             ("expiring_3d", "Expiring 3d"),
             ("expiring_7d", "Expiring 7d"),
-            ("active",      "Active"),
+            ("followup",    "Follow up"),
             ("closed",      "Closed"),
             ("expired",     "Expired"),
         ]
@@ -3270,8 +3309,11 @@ with tab_hist:
 
         if status_filter == "all":
             filtered = type_filtered
+        elif status_filter == "followup":
+            filtered = [q for q in type_filtered if quote_needs_followup(q)]
         else:
             filtered = [q for q in type_filtered if classify_quote_status(q) == status_filter]
+
 
         # ---- Overview metrics (based on full history, not the active filter) ----
         n_closed = sum(1 for q in history if q.get("closed", False))
