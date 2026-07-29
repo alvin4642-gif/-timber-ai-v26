@@ -916,6 +916,15 @@ FOLLOW_UP_TAG_KEYS = {"src_whatsapp", "src_email", "status_call_back", "status_n
 def quote_needs_followup(q):
     return any(t in FOLLOW_UP_TAG_KEYS for t in q.get("tags", []))
 
+def quote_needs_delivery_attention(q):
+    """True for closed quotes with a delivery date set that haven't been
+    marked delivered yet — shown in the History tab's 'Delivery' pill."""
+    if not q.get("closed", False):
+        return False
+    if q.get("delivery_delivered", False):
+        return False
+    return bool(q.get("delivery_date", ""))
+
 def tag_keys_for_category(category):
     return [k for k, d in QUOTE_TAG_DEFS.items() if d["category"] == category]
 
@@ -965,16 +974,17 @@ def set_quote_tags(qid, tags):
         return False
     return save_history(history)
 
-def set_quote_delivery(qid, delivery_date, balance_paid, delivered):
-    """Saves delivery tracking fields (est. delivery date, balance-paid tick,
-    delivered tick) onto a closed quote. delivery_date is a '%d %b %Y' string
-    or '' to clear it. Returns True on success."""
+def set_quote_delivery(qid, delivery_date, balance_amount, balance_paid_date, delivered):
+    """Saves delivery tracking fields onto a closed quote: est. delivery date,
+    outstanding balance amount (S$), the date that balance was received
+    ('' if not yet paid), and a delivered tick. Returns True on success."""
     history = load_history()
     found = False
     for q in history:
         if q.get("id") == qid:
             q["delivery_date"] = delivery_date
-            q["delivery_balance_paid"] = balance_paid
+            q["delivery_balance_amount"] = balance_amount
+            q["delivery_balance_paid_date"] = balance_paid_date
             q["delivery_delivered"] = delivered
             found = True
             break
@@ -3324,7 +3334,14 @@ with tab_hist:
                     _when = "today"
                 else:
                     _when = f"in {_days} day{'s' if _days!=1 else ''}"
-                _paid_tag = "" if _q.get("delivery_balance_paid", False) else " &nbsp;:orange-background[⚠️ Balance not paid]"
+                _bal_amt = _q.get("delivery_balance_amount")
+                _bal_paid_date = _q.get("delivery_balance_paid_date", "")
+                if _bal_paid_date:
+                    _paid_tag = f" &nbsp;:green-background[💰 Paid {_bal_paid_date}]"
+                elif _bal_amt:
+                    _paid_tag = f" &nbsp;:orange-background[⚠️ Bal S${float(_bal_amt):,.2f} unpaid]"
+                else:
+                    _paid_tag = ""
                 _dc1, _dc2 = st.columns([5, 1])
                 with _dc1:
                     st.markdown(
@@ -3382,17 +3399,20 @@ with tab_hist:
         # ---- Status pills (search + type filter applied first, so counts reflect what's on screen) ----
         if "hist_status_filter" not in st.session_state:
             st.session_state.hist_status_filter = "all"
-        _status_counts = {"all": len(type_filtered), "followup": 0}
+        _status_counts = {"all": len(type_filtered), "followup": 0, "delivery": 0}
         for _q in type_filtered:
             _g = classify_quote_status(_q)
             _status_counts[_g] = _status_counts.get(_g, 0) + 1
             if quote_needs_followup(_q):
                 _status_counts["followup"] += 1
+            if quote_needs_delivery_attention(_q):
+                _status_counts["delivery"] += 1
         _pill_defs = [
             ("all",         "All"),
             ("expiring_3d", "Expiring 3d"),
             ("expiring_7d", "Expiring 7d"),
             ("followup",    "Follow up"),
+            ("delivery",    "Delivery"),
             ("closed",      "Closed"),
             ("expired",     "Expired"),
         ]
@@ -3411,6 +3431,8 @@ with tab_hist:
             filtered = type_filtered
         elif status_filter == "followup":
             filtered = [q for q in type_filtered if quote_needs_followup(q)]
+        elif status_filter == "delivery":
+            filtered = [q for q in type_filtered if quote_needs_delivery_attention(q)]
         else:
             filtered = [q for q in type_filtered if classify_quote_status(q) == status_filter]
 
@@ -3479,10 +3501,12 @@ with tab_hist:
                             delivery_badge = f" &nbsp;:red-background[🚚 Overdue — was due {_dd.strftime('%d %b %Y')}]"
                         else:
                             delivery_badge = f" &nbsp;:blue-background[🚚 Due {_dd.strftime('%d %b %Y')} ({_ddays}d)]"
-                        if not q.get("delivery_balance_paid", False):
-                            delivery_badge += " &nbsp;:orange-background[⚠️ Balance not paid]"
-                        else:
-                            delivery_badge += " &nbsp;:green-background[💰 Paid]"
+                        _bal_amt = q.get("delivery_balance_amount")
+                        _bal_paid_date = q.get("delivery_balance_paid_date", "")
+                        if _bal_paid_date:
+                            delivery_badge += f" &nbsp;:green-background[💰 Paid {_bal_paid_date}]"
+                        elif _bal_amt:
+                            delivery_badge += f" &nbsp;:orange-background[⚠️ Bal S${float(_bal_amt):,.2f} unpaid]"
                     except ValueError:
                         pass
             elif is_expired:
@@ -3519,21 +3543,35 @@ with tab_hist:
                         _dd_val = datetime.strptime(_dd_str, "%d %b %Y").date() if _dd_str else None
                     except ValueError:
                         _dd_val = None
-                    dc1, dc2, dc3 = st.columns([2,1,1])
+                    _order_total = closed_total if closed_total is not None else total
+                    _bal_default = q.get("delivery_balance_amount")
+                    if _bal_default is None:
+                        _bal_default = round(_order_total * 0.5, 2)  # auto-calc 50% default, editable below
+                    _bal_paid_str = q.get("delivery_balance_paid_date", "")
+                    try:
+                        _bal_paid_val = datetime.strptime(_bal_paid_str, "%d %b %Y").date() if _bal_paid_str else None
+                    except ValueError:
+                        _bal_paid_val = None
+
+                    dc1, dc2 = st.columns(2)
                     with dc1:
                         _new_dd = st.date_input("Est. delivery date", value=_dd_val,
                             key=f"deldate_{key_suffix}", format="DD/MM/YYYY")
                     with dc2:
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        _new_paid = st.checkbox("Balance paid", value=q.get("delivery_balance_paid", False),
-                            key=f"delpaid_{key_suffix}")
-                    with dc3:
-                        st.markdown("<br>", unsafe_allow_html=True)
                         _new_delivered = st.checkbox("Delivered", value=q.get("delivery_delivered", False),
                             key=f"deldone_{key_suffix}")
+                    st.caption(f"Balance amount defaults to 50% of S${_order_total:,.2f} — edit if the split differs.")
+                    dc3, dc4 = st.columns(2)
+                    with dc3:
+                        _new_bal_amt = st.number_input("Balance amount (S$)", min_value=0.0,
+                            value=float(_bal_default), step=1.0, format="%.2f", key=f"delbalamt_{key_suffix}")
+                    with dc4:
+                        _new_bal_paid = st.date_input("Payment received on", value=_bal_paid_val,
+                            key=f"delbalpaid_{key_suffix}", format="DD/MM/YYYY")
                     if st.button("💾 Save delivery info", key=f"delsave_{key_suffix}", use_container_width=True):
                         _new_dd_str = _new_dd.strftime("%d %b %Y") if _new_dd else ""
-                        if set_quote_delivery(qid, _new_dd_str, _new_paid, _new_delivered):
+                        _new_bal_paid_str = _new_bal_paid.strftime("%d %b %Y") if _new_bal_paid else ""
+                        if set_quote_delivery(qid, _new_dd_str, _new_bal_amt, _new_bal_paid_str, _new_delivered):
                             st.session_state.delivery_due_checked = False
                             st.success("Delivery info saved."); st.rerun()
                         else:
