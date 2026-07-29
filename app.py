@@ -916,14 +916,26 @@ FOLLOW_UP_TAG_KEYS = {"src_whatsapp", "src_email", "status_call_back", "status_n
 def quote_needs_followup(q):
     return any(t in FOLLOW_UP_TAG_KEYS for t in q.get("tags", []))
 
+def compute_batch_delivery_date(batch):
+    """Returns a date (or None) computed as received_date + lead_time_days,
+    or None if either input is missing/unparseable."""
+    _rd_str = batch.get("received_date", "")
+    _lt = batch.get("lead_time_days")
+    if not _rd_str or not _lt:
+        return None
+    try:
+        _rd = datetime.strptime(_rd_str, "%d %b %Y").date()
+        return _rd + timedelta(days=int(_lt))
+    except (ValueError, TypeError):
+        return None
+
 def quote_needs_delivery_attention(q):
-    """True for closed quotes with a delivery date set that haven't been
-    marked delivered yet — shown in the History tab's 'Delivery' pill."""
+    """True for closed quotes with at least one delivery batch that hasn't
+    been marked delivered yet — shown in the History tab's 'Delivery' pill."""
     if not q.get("closed", False):
         return False
-    if q.get("delivery_delivered", False):
-        return False
-    return bool(q.get("delivery_date", ""))
+    _batches = q.get("delivery_batches", [])
+    return any(not b.get("delivered", False) for b in _batches)
 
 def tag_keys_for_category(category):
     return [k for k, d in QUOTE_TAG_DEFS.items() if d["category"] == category]
@@ -974,18 +986,15 @@ def set_quote_tags(qid, tags):
         return False
     return save_history(history)
 
-def set_quote_delivery(qid, delivery_date, balance_amount, balance_paid_date, delivered):
-    """Saves delivery tracking fields onto a closed quote: est. delivery date,
-    outstanding balance amount (S$), the date that balance was received
-    ('' if not yet paid), and a delivered tick. Returns True on success."""
+def set_quote_delivery_batches(qid, batches):
+    """Saves the full list of delivery batches onto a closed quote. Each
+    batch: {amount_received, received_date, lead_time_days, delivery_date,
+    delivered}. Returns True on success."""
     history = load_history()
     found = False
     for q in history:
         if q.get("id") == qid:
-            q["delivery_date"] = delivery_date
-            q["delivery_balance_amount"] = balance_amount
-            q["delivery_balance_paid_date"] = balance_paid_date
-            q["delivery_delivered"] = delivered
+            q["delivery_batches"] = batches
             found = True
             break
     if not found:
@@ -1754,7 +1763,7 @@ if "expiring_soon_checked" not in st.session_state:
     st.session_state.expiring_soon_count = len(_soon_list)
     st.session_state.expiring_soon_checked = True
 
-DELIVERY_ALERT_DAYS = 2  # start alerting this many days before the est. delivery date
+DELIVERY_ALERT_DAYS = 2  # start alerting this many days before a batch's est. delivery date
 
 if "delivery_due_checked" not in st.session_state:
     _del_history = load_history()
@@ -1764,20 +1773,17 @@ if "delivery_due_checked" not in st.session_state:
     for _q in _del_history:
         if not _q.get("closed", False):
             continue
-        if _q.get("delivery_delivered", False):
-            continue
-        _dd_str = _q.get("delivery_date", "")
-        if not _dd_str:
-            continue
-        try:
-            _dd = datetime.strptime(_dd_str, "%d %b %Y").date()
-        except ValueError:
-            continue
-        # Alert once we're within DELIVERY_ALERT_DAYS of the date, and keep
-        # alerting if it's now overdue (still not marked delivered).
-        if _dd <= _del_alert_cutoff:
-            _delivery_due_list.append(_q)
-    _delivery_due_list.sort(key=lambda q: q.get("delivery_date", ""))
+        for _b in _q.get("delivery_batches", []):
+            if _b.get("delivered", False):
+                continue
+            _dd = compute_batch_delivery_date(_b)
+            if _dd is None:
+                continue
+            # Alert once we're within DELIVERY_ALERT_DAYS of the date, and keep
+            # alerting if it's now overdue (still not marked delivered).
+            if _dd <= _del_alert_cutoff:
+                _delivery_due_list.append({"q": _q, "batch": _b, "delivery_date": _dd})
+    _delivery_due_list.sort(key=lambda e: e["delivery_date"])
     st.session_state.delivery_due_list = _delivery_due_list
     st.session_state.delivery_due_count = len(_delivery_due_list)
     st.session_state.delivery_due_checked = True
@@ -3325,8 +3331,8 @@ with tab_hist:
                 st.session_state.hist_banner_delivery_open = not st.session_state.hist_banner_delivery_open
                 st.rerun()
         if st.session_state.hist_banner_delivery_open:
-            for _q in _delivery_due_list:
-                _dd = datetime.strptime(_q.get("delivery_date",""), "%d %b %Y").date()
+            for _entry in _delivery_due_list:
+                _q = _entry["q"]; _b = _entry["batch"]; _dd = _entry["delivery_date"]
                 _days = (_dd - now_sgt().date()).days
                 if _days < 0:
                     _when = f"overdue by {abs(_days)} day{'s' if abs(_days)!=1 else ''}"
@@ -3334,22 +3340,16 @@ with tab_hist:
                     _when = "today"
                 else:
                     _when = f"in {_days} day{'s' if _days!=1 else ''}"
-                _bal_amt = _q.get("delivery_balance_amount")
-                _bal_paid_date = _q.get("delivery_balance_paid_date", "")
-                if _bal_paid_date:
-                    _paid_tag = f" &nbsp;:green-background[💰 Paid {_bal_paid_date}]"
-                elif _bal_amt:
-                    _paid_tag = f" &nbsp;:orange-background[⚠️ Bal S${float(_bal_amt):,.2f} unpaid]"
-                else:
-                    _paid_tag = ""
+                _amt = float(_b.get("amount_received", 0) or 0)
+                _amt_tag = f" &nbsp;:blue-background[💰 S${_amt:,.2f} received for this batch]" if _amt else ""
                 _dc1, _dc2 = st.columns([5, 1])
                 with _dc1:
                     st.markdown(
-                        f"&nbsp;&nbsp;• {_q.get('customer','—')} — delivery {_when} "
-                        f"({_dd.strftime('%d %b %Y')}){_paid_tag}"
+                        f"&nbsp;&nbsp;• {_q.get('customer','—')} — batch delivery {_when} "
+                        f"({_dd.strftime('%d %b %Y')}){_amt_tag}"
                     )
                 with _dc2:
-                    if st.button("🔗 Check", key=f"delcheck_{_q.get('id','')}", use_container_width=True):
+                    if st.button("🔗 Check", key=f"delcheck_{_q.get('id','')}_{id(_b)}", use_container_width=True):
                         st.session_state.hist_search_val = _q.get("customer", "")
                         st.session_state.hist_search_ver += 1
                         st.session_state.hist_status_filter = "closed"
@@ -3490,25 +3490,29 @@ with tab_hist:
                                     f"— Quoted S${total:,.2f} → Closed S${closed_total:,.2f}]")
                 else:
                     status_badge = f" &nbsp;:violet-background[✅ Closed {closed_date}]"
-                _dd_str = q.get("delivery_date", "")
-                if _dd_str:
-                    try:
-                        _dd = datetime.strptime(_dd_str, "%d %b %Y").date()
-                        _ddays = (_dd - now_sgt().date()).days
-                        if q.get("delivery_delivered", False):
-                            delivery_badge = f" &nbsp;:green-background[🚚 Delivered {_dd.strftime('%d %b %Y')}]"
-                        elif _ddays < 0:
-                            delivery_badge = f" &nbsp;:red-background[🚚 Overdue — was due {_dd.strftime('%d %b %Y')}]"
-                        else:
-                            delivery_badge = f" &nbsp;:blue-background[🚚 Due {_dd.strftime('%d %b %Y')} ({_ddays}d)]"
-                        _bal_amt = q.get("delivery_balance_amount")
-                        _bal_paid_date = q.get("delivery_balance_paid_date", "")
-                        if _bal_paid_date:
-                            delivery_badge += f" &nbsp;:green-background[💰 Paid {_bal_paid_date}]"
-                        elif _bal_amt:
-                            delivery_badge += f" &nbsp;:orange-background[⚠️ Bal S${float(_bal_amt):,.2f} unpaid]"
-                    except ValueError:
-                        pass
+                _batches = q.get("delivery_batches", [])
+                if _batches:
+                    _n_total = len(_batches)
+                    _n_delivered = sum(1 for b in _batches if b.get("delivered", False))
+                    if _n_delivered == _n_total:
+                        delivery_badge = f" &nbsp;:green-background[🚚 All {_n_total} batch{'es' if _n_total!=1 else ''} delivered]"
+                    else:
+                        # Show the soonest pending batch's date as the headline signal.
+                        _pending_dates = [compute_batch_delivery_date(b) for b in _batches if not b.get("delivered", False)]
+                        _pending_dates = [d for d in _pending_dates if d]
+                        if _pending_dates:
+                            _next_dd = min(_pending_dates)
+                            _ndays = (_next_dd - now_sgt().date()).days
+                            if _ndays < 0:
+                                delivery_badge = f" &nbsp;:red-background[🚚 Overdue — batch was due {_next_dd.strftime('%d %b %Y')}]"
+                            else:
+                                delivery_badge = f" &nbsp;:blue-background[🚚 Next due {_next_dd.strftime('%d %b %Y')} ({_ndays}d)]"
+                        delivery_badge += f" &nbsp;:gray-background[{_n_delivered}/{_n_total} batches delivered]"
+                    _order_total = closed_total if closed_total is not None else total
+                    _received = sum(float(b.get("amount_received", 0) or 0) for b in _batches)
+                    _balance = round(_order_total - _received, 2)
+                    if _balance > 0.005:
+                        delivery_badge += f" &nbsp;:orange-background[⚠️ Bal S${_balance:,.2f} owed]"
             elif is_expired:
                 _vu = effective_valid_until(q)
                 _vu_disp = _vu.strftime("%d %b %Y") if _vu else "?"
@@ -3538,41 +3542,65 @@ with tab_hist:
 
                 if is_closed:
                     st.caption("🚚 Delivery tracking")
-                    _dd_str = q.get("delivery_date", "")
-                    try:
-                        _dd_val = datetime.strptime(_dd_str, "%d %b %Y").date() if _dd_str else None
-                    except ValueError:
-                        _dd_val = None
                     _order_total = closed_total if closed_total is not None else total
-                    _bal_default = q.get("delivery_balance_amount")
-                    if _bal_default is None:
-                        _bal_default = round(_order_total * 0.5, 2)  # auto-calc 50% default, editable below
-                    _bal_paid_str = q.get("delivery_balance_paid_date", "")
-                    try:
-                        _bal_paid_val = datetime.strptime(_bal_paid_str, "%d %b %Y").date() if _bal_paid_str else None
-                    except ValueError:
-                        _bal_paid_val = None
+                    _batches_key = f"delbatches_{key_suffix}"
+                    if _batches_key not in st.session_state:
+                        st.session_state[_batches_key] = [dict(b) for b in q.get("delivery_batches", [])]
+                    _batches = st.session_state[_batches_key]
 
-                    dc1, dc2 = st.columns(2)
-                    with dc1:
-                        _new_dd = st.date_input("Est. delivery date", value=_dd_val,
-                            key=f"deldate_{key_suffix}", format="DD/MM/YYYY")
-                    with dc2:
-                        _new_delivered = st.checkbox("Delivered", value=q.get("delivery_delivered", False),
-                            key=f"deldone_{key_suffix}")
-                    st.caption(f"Balance amount defaults to 50% of S${_order_total:,.2f} — edit if the split differs.")
-                    dc3, dc4 = st.columns(2)
-                    with dc3:
-                        _new_bal_amt = st.number_input("Balance amount (S$)", min_value=0.0,
-                            value=float(_bal_default), step=1.0, format="%.2f", key=f"delbalamt_{key_suffix}")
-                    with dc4:
-                        _new_bal_paid = st.date_input("Payment received on", value=_bal_paid_val,
-                            key=f"delbalpaid_{key_suffix}", format="DD/MM/YYYY")
+                    _total_received = sum(float(b.get("amount_received", 0) or 0) for b in _batches)
+                    _balance_owed = round(_order_total - _total_received, 2)
+                    st.caption(f"Total received S${_total_received:,.2f} of S${_order_total:,.2f} "
+                               f"— balance owed S${_balance_owed:,.2f}")
+
+                    for _bi, _b in enumerate(_batches):
+                        if "bid" not in _b:
+                            _b["bid"] = f"{key_suffix}_{_bi}_{len(_batches)}"
+                        _bkey = _b["bid"]
+                        st.markdown(f"**Batch {_bi+1}**")
+                        bc1, bc2, bc3, bc4 = st.columns([1,1,1,1])
+                        with bc1:
+                            _b["amount_received"] = st.number_input("Amount received (S$)", min_value=0.0,
+                                value=float(_b.get("amount_received", 0.0)), step=1.0, format="%.2f",
+                                key=f"bamt_{_bkey}")
+                        with bc2:
+                            try:
+                                _rd_val = datetime.strptime(_b.get("received_date",""), "%d %b %Y").date() if _b.get("received_date") else None
+                            except ValueError:
+                                _rd_val = None
+                            _new_rd = st.date_input("Received on", value=_rd_val, key=f"brd_{_bkey}", format="DD/MM/YYYY")
+                            _b["received_date"] = _new_rd.strftime("%d %b %Y") if _new_rd else ""
+                        with bc3:
+                            _b["lead_time_days"] = st.number_input("Lead time (days)", min_value=0,
+                                value=int(_b.get("lead_time_days") or 0), step=1, key=f"blt_{_bkey}")
+                        with bc4:
+                            _b["delivered"] = st.checkbox("Delivered", value=_b.get("delivered", False),
+                                key=f"bdel_{_bkey}")
+                        _computed_dd = compute_batch_delivery_date(_b)
+                        st.caption(f"Est. delivery: {_computed_dd.strftime('%d %b %Y') if _computed_dd else '— enter received date and lead time'}")
+                        if st.button("🗑️ Remove batch", key=f"bremove_{_bkey}"):
+                            st.session_state[_batches_key].pop(_bi)
+                            st.rerun()
+                        st.markdown("<hr style='margin:8px 0'>", unsafe_allow_html=True)
+
+                    if st.button("➕ Add delivery batch", key=f"addbatch_{key_suffix}", use_container_width=True):
+                        st.session_state[_batches_key].append({"bid": f"{key_suffix}_new_{len(_batches)}"})
+                        st.rerun()
+
                     if st.button("💾 Save delivery info", key=f"delsave_{key_suffix}", use_container_width=True):
-                        _new_dd_str = _new_dd.strftime("%d %b %Y") if _new_dd else ""
-                        _new_bal_paid_str = _new_bal_paid.strftime("%d %b %Y") if _new_bal_paid else ""
-                        if set_quote_delivery(qid, _new_dd_str, _new_bal_amt, _new_bal_paid_str, _new_delivered):
+                        _clean_batches = []
+                        for _b in st.session_state[_batches_key]:
+                            _cd = compute_batch_delivery_date(_b)
+                            _clean_batches.append({
+                                "amount_received": float(_b.get("amount_received", 0) or 0),
+                                "received_date": _b.get("received_date", ""),
+                                "lead_time_days": int(_b.get("lead_time_days") or 0),
+                                "delivery_date": _cd.strftime("%d %b %Y") if _cd else "",
+                                "delivered": bool(_b.get("delivered", False)),
+                            })
+                        if set_quote_delivery_batches(qid, _clean_batches):
                             st.session_state.delivery_due_checked = False
+                            del st.session_state[_batches_key]
                             st.success("Delivery info saved."); st.rerun()
                         else:
                             st.error("Could not save — try refreshing.")
