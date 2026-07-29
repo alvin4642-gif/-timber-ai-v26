@@ -965,6 +965,23 @@ def set_quote_tags(qid, tags):
         return False
     return save_history(history)
 
+def set_quote_delivery(qid, delivery_date, balance_paid, delivered):
+    """Saves delivery tracking fields (est. delivery date, balance-paid tick,
+    delivered tick) onto a closed quote. delivery_date is a '%d %b %Y' string
+    or '' to clear it. Returns True on success."""
+    history = load_history()
+    found = False
+    for q in history:
+        if q.get("id") == qid:
+            q["delivery_date"] = delivery_date
+            q["delivery_balance_paid"] = balance_paid
+            q["delivery_delivered"] = delivered
+            found = True
+            break
+    if not found:
+        return False
+    return save_history(history)
+
 def mark_quote_closed(qid):
     """Marks a quote as closed with today's SGT date. Returns True on success."""
     history = load_history()
@@ -1726,6 +1743,34 @@ if "expiring_soon_checked" not in st.session_state:
     st.session_state.expiring_soon_list = _soon_list
     st.session_state.expiring_soon_count = len(_soon_list)
     st.session_state.expiring_soon_checked = True
+
+DELIVERY_ALERT_DAYS = 2  # start alerting this many days before the est. delivery date
+
+if "delivery_due_checked" not in st.session_state:
+    _del_history = load_history()
+    _del_today = now_sgt().date()
+    _del_alert_cutoff = _del_today + timedelta(days=DELIVERY_ALERT_DAYS)
+    _delivery_due_list = []
+    for _q in _del_history:
+        if not _q.get("closed", False):
+            continue
+        if _q.get("delivery_delivered", False):
+            continue
+        _dd_str = _q.get("delivery_date", "")
+        if not _dd_str:
+            continue
+        try:
+            _dd = datetime.strptime(_dd_str, "%d %b %Y").date()
+        except ValueError:
+            continue
+        # Alert once we're within DELIVERY_ALERT_DAYS of the date, and keep
+        # alerting if it's now overdue (still not marked delivered).
+        if _dd <= _del_alert_cutoff:
+            _delivery_due_list.append(_q)
+    _delivery_due_list.sort(key=lambda q: q.get("delivery_date", ""))
+    st.session_state.delivery_due_list = _delivery_due_list
+    st.session_state.delivery_due_count = len(_delivery_due_list)
+    st.session_state.delivery_due_checked = True
 
 def render_customer_section(key_prefix):
     """Quick repeat customer search + Customer Details fields. Shared by
@@ -3256,6 +3301,46 @@ with tab_hist:
     if _expired_list or _soon_list:
         st.divider()
 
+    _delivery_due_list = st.session_state.get("delivery_due_list", [])
+    if "hist_banner_delivery_open" not in st.session_state:
+        st.session_state.hist_banner_delivery_open = False
+    if _delivery_due_list:
+        _n_del = len(_delivery_due_list)
+        _bc1, _bc2 = st.columns([5, 1])
+        with _bc1:
+            st.info(f"🚚 {_n_del} {'delivery' if _n_del==1 else 'deliveries'} due — check schedule with admin")
+        with _bc2:
+            _lbl = "Hide" if st.session_state.hist_banner_delivery_open else "View"
+            if st.button(_lbl, key="toggle_delivery_banner", use_container_width=True):
+                st.session_state.hist_banner_delivery_open = not st.session_state.hist_banner_delivery_open
+                st.rerun()
+        if st.session_state.hist_banner_delivery_open:
+            for _q in _delivery_due_list:
+                _dd = datetime.strptime(_q.get("delivery_date",""), "%d %b %Y").date()
+                _days = (_dd - now_sgt().date()).days
+                if _days < 0:
+                    _when = f"overdue by {abs(_days)} day{'s' if abs(_days)!=1 else ''}"
+                elif _days == 0:
+                    _when = "today"
+                else:
+                    _when = f"in {_days} day{'s' if _days!=1 else ''}"
+                _paid_tag = "" if _q.get("delivery_balance_paid", False) else " &nbsp;:orange-background[⚠️ Balance not paid]"
+                _dc1, _dc2 = st.columns([5, 1])
+                with _dc1:
+                    st.markdown(
+                        f"&nbsp;&nbsp;• {_q.get('customer','—')} — delivery {_when} "
+                        f"({_dd.strftime('%d %b %Y')}){_paid_tag}"
+                    )
+                with _dc2:
+                    if st.button("🔗 Check", key=f"delcheck_{_q.get('id','')}", use_container_width=True):
+                        st.session_state.hist_search_val = _q.get("customer", "")
+                        st.session_state.hist_search_ver += 1
+                        st.session_state.hist_status_filter = "closed"
+                        st.rerun()
+
+    if _expired_list or _soon_list or _delivery_due_list:
+        st.divider()
+
     with st.form("hist_search_form",clear_on_submit=False):
         hs1,hs2,hs3=st.columns([4,1,1])
         with hs1:
@@ -3376,12 +3461,30 @@ with tab_hist:
             is_expired = quote_is_expired(q) and not is_closed
             type_icon={"Odd Size":"📐","Combined":"🔀"}.get(qtype,"📄")
             status_badge = ""
+            delivery_badge = ""
             if is_closed:
                 if closed_total is not None and abs(closed_total - total) > 0.005:
                     status_badge = (f" &nbsp;:violet-background[✅ Closed {closed_date} "
                                     f"— Quoted S${total:,.2f} → Closed S${closed_total:,.2f}]")
                 else:
                     status_badge = f" &nbsp;:violet-background[✅ Closed {closed_date}]"
+                _dd_str = q.get("delivery_date", "")
+                if _dd_str:
+                    try:
+                        _dd = datetime.strptime(_dd_str, "%d %b %Y").date()
+                        _ddays = (_dd - now_sgt().date()).days
+                        if q.get("delivery_delivered", False):
+                            delivery_badge = f" &nbsp;:green-background[🚚 Delivered {_dd.strftime('%d %b %Y')}]"
+                        elif _ddays < 0:
+                            delivery_badge = f" &nbsp;:red-background[🚚 Overdue — was due {_dd.strftime('%d %b %Y')}]"
+                        else:
+                            delivery_badge = f" &nbsp;:blue-background[🚚 Due {_dd.strftime('%d %b %Y')} ({_ddays}d)]"
+                        if not q.get("delivery_balance_paid", False):
+                            delivery_badge += " &nbsp;:orange-background[⚠️ Balance not paid]"
+                        else:
+                            delivery_badge += " &nbsp;:green-background[💰 Paid]"
+                    except ValueError:
+                        pass
             elif is_expired:
                 _vu = effective_valid_until(q)
                 _vu_disp = _vu.strftime("%d %b %Y") if _vu else "?"
@@ -3396,7 +3499,7 @@ with tab_hist:
                     _days_word = "day" if _days_left == 1 else "days"
                     status_badge = (f" &nbsp;:blue-background[Valid until "
                                     f"{_vu.strftime('%d %b %Y')} ({_days_left} {_days_word} left)]")
-            label=f"{type_icon} [{qtype}]  {date} {time}  ·  {name}  ·  {mobile}  ·  SGD {total:,.2f}  ·  Profit SGD {profit:,.2f}{status_badge}{tag_badges_markdown(q.get('tags', []))}"
+            label=f"{type_icon} [{qtype}]  {date} {time}  ·  {name}  ·  {mobile}  ·  SGD {total:,.2f}  ·  Profit SGD {profit:,.2f}{status_badge}{delivery_badge}{tag_badges_markdown(q.get('tags', []))}"
             with st.expander(label):
                 st.text_area("Full quote",value=text,height=300,key=f"qt_{key_suffix}")
 
@@ -3408,6 +3511,33 @@ with tab_hist:
                         st.rerun()
                     else:
                         st.error("Could not save tags — try refreshing.")
+
+                if is_closed:
+                    st.caption("🚚 Delivery tracking")
+                    _dd_str = q.get("delivery_date", "")
+                    try:
+                        _dd_val = datetime.strptime(_dd_str, "%d %b %Y").date() if _dd_str else None
+                    except ValueError:
+                        _dd_val = None
+                    dc1, dc2, dc3 = st.columns([2,1,1])
+                    with dc1:
+                        _new_dd = st.date_input("Est. delivery date", value=_dd_val,
+                            key=f"deldate_{key_suffix}", format="DD/MM/YYYY")
+                    with dc2:
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        _new_paid = st.checkbox("Balance paid", value=q.get("delivery_balance_paid", False),
+                            key=f"delpaid_{key_suffix}")
+                    with dc3:
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        _new_delivered = st.checkbox("Delivered", value=q.get("delivery_delivered", False),
+                            key=f"deldone_{key_suffix}")
+                    if st.button("💾 Save delivery info", key=f"delsave_{key_suffix}", use_container_width=True):
+                        _new_dd_str = _new_dd.strftime("%d %b %Y") if _new_dd else ""
+                        if set_quote_delivery(qid, _new_dd_str, _new_paid, _new_delivered):
+                            st.session_state.delivery_due_checked = False
+                            st.success("Delivery info saved."); st.rerun()
+                        else:
+                            st.error("Could not save — try refreshing.")
 
                 hb1,hb2,hb3=st.columns(3)
                 with hb1:
