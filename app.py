@@ -684,11 +684,11 @@ def load_history():
             if not raw or raw.strip() == "[]": return []
             return json.loads(raw)
         elif r.status_code == 401:
-            st.warning("⚠️ GitHub token expired. Please update in Streamlit secrets.")
+            render_flash_alert("GitHub token expired. Please update in Streamlit secrets.")
         elif r.status_code == 404:
-            st.warning("⚠️ Gist not found. Please check gist_id in Streamlit secrets.")
+            render_flash_alert("Gist not found. Please check gist_id in Streamlit secrets.")
     except Exception as e:
-        st.warning(f"⚠️ Could not load history: {str(e)}")
+        render_flash_alert(f"Could not load history: {str(e)}")
     return []
 
 def save_history(history):
@@ -1327,13 +1327,27 @@ def render_table(rows):
     html += '</tbody></table>'
     st.markdown(html, unsafe_allow_html=True)
 
+def render_flash_alert(message, level="danger", icon="⚠️"):
+    """Renders a flashing alert banner for warnings that genuinely need eyes
+    on them now (money/data risk) — not for transient input validation."""
+    bg = "#DC2626" if level == "danger" else "#EF9F27"
+    fg = "white" if level == "danger" else "#412402"
+    st.markdown(
+        f"<div style='animation:flashAlert 1s step-start infinite;"
+        f"background:{bg};color:{fg};font-weight:600;font-size:14px;"
+        f"padding:10px 14px;border-radius:8px;margin:6px 0'>"
+        f"{icon} {message}</div>"
+        f"<style>@keyframes flashAlert{{50%{{opacity:0.35}}}}</style>",
+        unsafe_allow_html=True,
+    )
+
 def render_staff_log(log_items, grand_total, cost_total, show_margin=False):
     profit = round(grand_total - cost_total, 2)
     html = '<div class="staff-log"><div class="staff-log-header">Staff Calculation Log</div>'
     for i, item in enumerate(log_items, 1):
-        warn    = '<span class="warn-chip">&#9888;&#65039; SMALL QTY &mdash; adjust price before sending</span>' if item.get("small_qty") else ""
+        warn    = '<span class="warn-chip" style="animation:flashAlert 1s step-start infinite">&#9888;&#65039; SMALL QTY &mdash; adjust price before sending</span><style>@keyframes flashAlert{50%{opacity:0.35}}</style>' if item.get("small_qty") else ""
         grid    = "".join(f'<span class="log-label">{k}</span><span class="log-val">{v}</span>' for k, v in item["rows"].items())
-        moq_div = f'<div style="background:#FAEEDA;color:#854F0B;font-size:13px;font-weight:600;padding:4px 12px;border-radius:6px;margin-top:4px">&#9888;&#65039; MOQ APPLIED &mdash; {item.get("moq_note","")}</div>' if item.get("moq_flag") else ""
+        moq_div = f'<div style="background:#FAEEDA;color:#854F0B;font-size:13px;font-weight:600;padding:4px 12px;border-radius:6px;margin-top:4px;animation:flashAlert 1s step-start infinite">&#9888;&#65039; MOQ APPLIED &mdash; {item.get("moq_note","")}</div><style>@keyframes flashAlert{{50%{{opacity:0.35}}}}</style>' if item.get("moq_flag") else ""
         html += '<div class="log-item">'
         html += f'<div class="log-item-head"><span class="log-num">{i}</span>{item["heading"]}</div>'
         html += f'<div class="log-grid">{grid}<span class="log-label">Profit</span>'
@@ -2310,8 +2324,9 @@ with tab_odd:
                 if qw_mm < _cwid_mm - 0.01:
                     _undersize_msgs.append(f"width {qw_mm:g}mm is smaller than customer's stated {_cwid_mm:g}mm")
                 if _undersize_msgs:
-                    st.warning("⚠️ Your " + " and ".join(_undersize_msgs) +
-                               " — double-check this is intentional (e.g. an approved substitute) before adding.")
+                    render_flash_alert("Your " + " and ".join(_undersize_msgs) +
+                               " — double-check this is intentional (e.g. an approved substitute) before adding.",
+                               level="warning")
             if st.button("✓ Use this size", key="odd_use_override"):
                 _nom_ov_w = mm_to_nominal_inch(qw_mm); _nom_ov_h = mm_to_nominal_inch(qh_mm)
                 raw_ov, pcs_ov, price_ov = calc_from_mm(qw_mm, qh_mm, _ft_ov, odd_rate, _nom_ov_w, _nom_ov_h)
@@ -2671,7 +2686,7 @@ with tab_ply:
         with fa3: st.markdown(f"<br><small>Default profit:<br>S${profit_preview}/sheet</small>",unsafe_allow_html=True)
         with fa4: st.markdown("<br>",unsafe_allow_html=True); add_ply=st.button("+ Add Plywood",type="primary",use_container_width=True,key="ply_add_btn")
 
-        if p_sell_def==0.0: st.warning("⚠️ Selling price is S$0.00 — check price table.")
+        if p_sell_def==0.0: render_flash_alert("Selling price is S$0.00 — check price table.")
         if p_cost_def==0.0: st.caption("⚠️ Cost price not yet set for this item — profit shown will be inaccurate until updated.")
 
         if add_ply:
@@ -3325,7 +3340,8 @@ with tab_hist:
         _n_del = len(_delivery_due_list)
         _bc1, _bc2 = st.columns([5, 1])
         with _bc1:
-            st.info(f"🚚 {_n_del} {'delivery' if _n_del==1 else 'deliveries'} due — check schedule with admin")
+            render_flash_alert(f"🚚 {_n_del} {'delivery' if _n_del==1 else 'deliveries'} due — check schedule with admin",
+                                level="warning", icon="")
         with _bc2:
             _lbl = "Hide" if st.session_state.hist_banner_delivery_open else "View"
             if st.button(_lbl, key="toggle_delivery_banner", use_container_width=True):
