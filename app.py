@@ -3569,15 +3569,27 @@ with tab_hist:
                         _remaining_qty = _total_qty - _total_batched_qty
                         st.caption(f"Batches cover {_total_batched_qty} / {_total_qty} — "
                                    f"{_remaining_qty if _remaining_qty > 0 else 0} unbatched")
-                        if _total_batched_qty >= _total_qty and _balance_owed > 0.005:
-                            st.warning(f"⚠️ Full quantity ({_total_qty}) is now batched, but S${_balance_owed:,.2f} "
-                                       f"balance is still outstanding — collect before completing delivery.")
 
                     for _bi, _b in enumerate(_batches):
                         if "bid" not in _b:
                             _b["bid"] = f"{key_suffix}_{_bi}_{len(_batches)}"
                         _bkey = _b["bid"]
-                        st.markdown(f"**Batch {_bi+1}**")
+                        _is_last_batch = (_bi == len(_batches) - 1)
+                        _hold_for_balance = (_is_last_batch and _total_qty
+                                              and _total_batched_qty >= _total_qty
+                                              and _balance_owed > 0.005)
+                        if _hold_for_balance:
+                            st.markdown(
+                                f"**Batch {_bi+1}** "
+                                f"<span style='animation:histBlink 1s step-start infinite;"
+                                f"background:#DC2626;color:white;font-weight:600;font-size:12px;"
+                                f"padding:3px 10px;border-radius:6px;margin-left:6px'>"
+                                f"⚠️ HOLD — S${_balance_owed:,.2f} balance not collected, do not deliver</span>"
+                                f"<style>@keyframes histBlink{{50%{{opacity:0.25}}}}</style>",
+                                unsafe_allow_html=True,
+                            )
+                        else:
+                            st.markdown(f"**Batch {_bi+1}**")
                         bc0, bc1, bc2, bc3, bc4 = st.columns([1,1,1,1,1])
                         with bc0:
                             _b["qty"] = st.number_input("Qty this batch", min_value=0,
