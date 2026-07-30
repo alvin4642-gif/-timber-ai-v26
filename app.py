@@ -2609,7 +2609,7 @@ with tab_ply:
                     st.markdown("<br>", unsafe_allow_html=True)
                     if st.button("💾 Save cost price", key=f"savecost_{_new_cost_key}", use_container_width=True):
                         if update_ply_cost(sel, ref_thk, new_cost_val):
-                            st.success(f"✅ Cost updated: S${ref_cost_def:.2f} → S${new_cost_val:.2f}")
+                            st.success(f"✅ Cost updated: S\\${ref_cost_def:.2f} → S\\${new_cost_val:.2f}")
                             st.rerun()
                         else:
                             st.error("❌ Could not save — check gist_id / github_token in Streamlit secrets.")
@@ -3131,7 +3131,7 @@ with tab_nego:
                         st.markdown(f"**{_it.get('label','item')}** · qty {_it.get('qty',0)}  "
                                     f"<span style='color:var(--color-text-secondary)'>pcs/ton: {_pcs}</span>",
                                     unsafe_allow_html=True)
-                        st.caption(f"Original: S${_it['price_per_pc']}/pc · S${_it['rate']:,.0f}/ton")
+                        st.caption(f"Original: S\\${_it['price_per_pc']}/pc · S\\${_it['rate']:,.0f}/ton")
                         _new_pc, _new_ton = render_bidirectional_rate_calc(
                             _ikey, _pcs, _it["rate"], _it["price_per_pc"])
                         if st.button("Use this rate for this item", key=f"nego_use_{_ikey}"):
@@ -3151,7 +3151,7 @@ with tab_nego:
                         st.caption(f"{_it.get('label','item')} — unrecognized item type, skipped.")
 
                     if _idx in _overrides:
-                        st.caption(f"✓ Negotiated: S${_overrides[_idx]:,.2f} (was S${_it['price_per_pc']}) "
+                        st.caption(f"✓ Negotiated: S\\${_overrides[_idx]:,.2f} (was S\\${_it['price_per_pc']}) "
                                    f"— not yet closed")
 
         # ---- running total from per-item negotiation ----
@@ -3550,8 +3550,8 @@ with tab_hist:
 
                     _total_received = sum(float(b.get("amount_received", 0) or 0) for b in _batches)
                     _balance_owed = round(_order_total - _total_received, 2)
-                    st.caption(f"Total received S${_total_received:,.2f} of S${_order_total:,.2f} "
-                               f"— balance owed S${_balance_owed:,.2f}")
+                    st.caption(f"Total received S\\${_total_received:,.2f} of S\\${_order_total:,.2f} "
+                               f"— balance owed S\\${_balance_owed:,.2f}")
 
                     for _bi, _b in enumerate(_batches):
                         if "bid" not in _b:
