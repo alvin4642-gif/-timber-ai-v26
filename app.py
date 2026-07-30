@@ -986,15 +986,16 @@ def set_quote_tags(qid, tags):
         return False
     return save_history(history)
 
-def set_quote_delivery_batches(qid, batches):
-    """Saves the full list of delivery batches onto a closed quote. Each
-    batch: {amount_received, received_date, lead_time_days, delivery_date,
-    delivered}. Returns True on success."""
+def set_quote_delivery_batches(qid, batches, total_qty):
+    """Saves the delivery batch list plus the order's total quantity onto a
+    closed quote. Each batch: {qty, amount_received, received_date,
+    lead_time_days, delivery_date, delivered}. Returns True on success."""
     history = load_history()
     found = False
     for q in history:
         if q.get("id") == qid:
             q["delivery_batches"] = batches
+            q["delivery_total_qty"] = total_qty
             found = True
             break
     if not found:
@@ -3513,6 +3514,12 @@ with tab_hist:
                     _balance = round(_order_total - _received, 2)
                     if _balance > 0.005:
                         delivery_badge += f" &nbsp;:orange-background[⚠️ Bal S${_balance:,.2f} owed]"
+                    _total_qty = q.get("delivery_total_qty", 0)
+                    if _total_qty:
+                        _batched_qty = sum(int(b.get("qty", 0) or 0) for b in _batches)
+                        delivery_badge += f" &nbsp;:gray-background[{_batched_qty}/{_total_qty} qty batched]"
+                        if _batched_qty >= _total_qty and _balance > 0.005:
+                            delivery_badge += f" &nbsp;:red-background[⚠️ Full qty batched, balance still owed]"
             elif is_expired:
                 _vu = effective_valid_until(q)
                 _vu_disp = _vu.strftime("%d %b %Y") if _vu else "?"
@@ -3548,17 +3555,33 @@ with tab_hist:
                         st.session_state[_batches_key] = [dict(b) for b in q.get("delivery_batches", [])]
                     _batches = st.session_state[_batches_key]
 
+                    _total_qty_key = f"deltotalqty_{key_suffix}"
+                    _total_qty = st.number_input("Total order quantity (pcs/sheets)", min_value=0,
+                        value=int(q.get("delivery_total_qty", 0)), step=1, key=_total_qty_key,
+                        help="Enter once — used to track how much of the order has been batched for delivery.")
+
                     _total_received = sum(float(b.get("amount_received", 0) or 0) for b in _batches)
                     _balance_owed = round(_order_total - _total_received, 2)
+                    _total_batched_qty = sum(int(b.get("qty", 0) or 0) for b in _batches)
                     st.caption(f"Total received S\\${_total_received:,.2f} of S\\${_order_total:,.2f} "
                                f"— balance owed S\\${_balance_owed:,.2f}")
+                    if _total_qty:
+                        _remaining_qty = _total_qty - _total_batched_qty
+                        st.caption(f"Batches cover {_total_batched_qty} / {_total_qty} — "
+                                   f"{_remaining_qty if _remaining_qty > 0 else 0} unbatched")
+                        if _total_batched_qty >= _total_qty and _balance_owed > 0.005:
+                            st.warning(f"⚠️ Full quantity ({_total_qty}) is now batched, but S${_balance_owed:,.2f} "
+                                       f"balance is still outstanding — collect before completing delivery.")
 
                     for _bi, _b in enumerate(_batches):
                         if "bid" not in _b:
                             _b["bid"] = f"{key_suffix}_{_bi}_{len(_batches)}"
                         _bkey = _b["bid"]
                         st.markdown(f"**Batch {_bi+1}**")
-                        bc1, bc2, bc3, bc4 = st.columns([1,1,1,1])
+                        bc0, bc1, bc2, bc3, bc4 = st.columns([1,1,1,1,1])
+                        with bc0:
+                            _b["qty"] = st.number_input("Qty this batch", min_value=0,
+                                value=int(_b.get("qty", 0) or 0), step=1, key=f"bqty_{_bkey}")
                         with bc1:
                             _b["amount_received"] = st.number_input("Amount received (S$)", min_value=0.0,
                                 value=float(_b.get("amount_received", 0.0)), step=1.0, format="%.2f",
@@ -3592,13 +3615,14 @@ with tab_hist:
                         for _b in st.session_state[_batches_key]:
                             _cd = compute_batch_delivery_date(_b)
                             _clean_batches.append({
+                                "qty": int(_b.get("qty", 0) or 0),
                                 "amount_received": float(_b.get("amount_received", 0) or 0),
                                 "received_date": _b.get("received_date", ""),
                                 "lead_time_days": int(_b.get("lead_time_days") or 0),
                                 "delivery_date": _cd.strftime("%d %b %Y") if _cd else "",
                                 "delivered": bool(_b.get("delivered", False)),
                             })
-                        if set_quote_delivery_batches(qid, _clean_batches):
+                        if set_quote_delivery_batches(qid, _clean_batches, int(st.session_state[_total_qty_key])):
                             st.session_state.delivery_due_checked = False
                             del st.session_state[_batches_key]
                             st.success("Delivery info saved."); st.rerun()
