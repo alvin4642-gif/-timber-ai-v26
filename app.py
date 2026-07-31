@@ -3234,7 +3234,10 @@ with tab_nego:
 
         if _scr_w > 0 and _scr_h > 0 and _scr_ft > 0:
             _scr_raw, _scr_pcs, _scr_price = calc_from_mm(_scr_w, _scr_h, _scr_ft, _scr_rate, _scr_nom_w, _scr_nom_h)
-            st.caption(f"pcs/ton: {_scr_pcs}  ·  at your normal rate this prices at S${_scr_price}/pc")
+            _mc1, _mc2, _mc3 = st.columns(3)
+            with _mc1: st.metric("pcs/ton", f"{_scr_pcs}")
+            with _mc2: st.metric("Rate used", f"S${_scr_rate:,.2f}/ton")
+            with _mc3: st.metric("Price/pc", f"S${_scr_price}")
             render_bidirectional_rate_calc("scratch", _scr_pcs, _scr_rate, _scr_price)
     else:
         st.caption("⚠️ Couldn't find 3 dimensions — try a format like 145x20x10ft or 4\"x2\"x3000mm.")
