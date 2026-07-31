@@ -3412,20 +3412,24 @@ with tab_hist:
     if _expired_list or _soon_list or _delivery_due_list:
         st.divider()
 
+    _search_key = f"hist_search_inp_{st.session_state.hist_search_ver}"
+    def _sync_hist_search():
+        st.session_state.hist_search_val = st.session_state.get(_search_key, "")
+
     sf1, sf2, sf3 = st.columns([4,1,1])
     with sf1:
         search=st.text_input("🔍 Search",value=st.session_state.hist_search_val,
             placeholder="Customer name, mobile, or item (e.g. 18mm casting plywood) — press Enter to search",
-            key=f"hist_search_inp_{st.session_state.hist_search_ver}",label_visibility="collapsed")
+            key=_search_key,label_visibility="collapsed", on_change=_sync_hist_search)
     with sf2:
         search_btn = st.button("🔍 Search", use_container_width=True, type="primary", key="hist_search_btn")
     with sf3:
         refresh_btn = st.button("🔄 Refresh", use_container_width=True, key="hist_refresh_btn")
 
-    # A plain text_input (no form) already reruns the script on Enter/blur, and
-    # `search` above reflects the freshly-typed text on that same rerun — so we
-    # sync it into hist_search_val unconditionally rather than waiting on a
-    # button click. The Search button still works too, it's just redundant.
+    # Belt-and-suspenders: on_change already syncs hist_search_val the instant
+    # Enter/blur fires (before this script body even runs), and this line
+    # covers the Search-button-click path too (button click doesn't fire
+    # on_change, but `search` here already holds the current box contents).
     st.session_state.hist_search_val = search
 
     if refresh_btn:
