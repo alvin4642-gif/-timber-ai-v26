@@ -3416,7 +3416,7 @@ with tab_hist:
         hs1,hs2,hs3=st.columns([4,1,1])
         with hs1:
             search=st.text_input("🔍 Search",value=st.session_state.hist_search_val,
-                placeholder="Type customer name or mobile — press Enter or click Search",
+                placeholder="Customer name, mobile, or item (e.g. Fire Retardant) — press Enter or click Search",
                 key=f"hist_search_inp_{st.session_state.hist_search_ver}",label_visibility="collapsed")
         with hs2: search_btn =st.form_submit_button("🔍 Search", use_container_width=True,type="primary")
         with hs3: refresh_btn=st.form_submit_button("🔄 Refresh",use_container_width=True)
@@ -3439,6 +3439,7 @@ with tab_hist:
         name_matched=[q for q in history
             if active_search.lower() in q.get("customer","").lower()
             or active_search in q.get("mobile","")
+            or active_search.lower() in q.get("text","").lower()
         ] if active_search else history
 
         # ---- Type filter ----
