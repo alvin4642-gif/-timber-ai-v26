@@ -1230,7 +1230,7 @@ def validate_odd_inputs(cthk_mm=None, cwid_mm=None, clen_val=None, clu=None,
     # Customer dims
     for val, label in [(cthk_mm, "Customer thickness"), (cwid_mm, "Customer width")]:
         if val is not None:
-            if val < 20:  errors.append(f"⚠️ {label} {val:.0f}mm is too small (min 20mm)")
+            if val < 20:  errors.append(f"⚠️ {label} {val:.0f}mm is too small (min 20mm) — did you forget a \"? {val:.0f}\" would be {val*25:.0f}mm.")
             if val > 500: errors.append(f"⚠️ {label} {val:.0f}mm is too large (max 500mm)")
     if clen_val is not None and clu is not None:
         if clu == "m":
@@ -1242,7 +1242,7 @@ def validate_odd_inputs(cthk_mm=None, cwid_mm=None, clen_val=None, clu=None,
     # Quote dims (free type only)
     for val, label in [(qthk_mm, "Quote thickness"), (qwid_mm, "Quote width")]:
         if val is not None:
-            if val < 20:  errors.append(f"⚠️ {label} {val:.0f}mm is too small (min 20mm)")
+            if val < 20:  errors.append(f"⚠️ {label} {val:.0f}mm is too small (min 20mm) — did you forget a \"? {val:.0f}\" would be {val*25:.0f}mm.")
             if val > 500: errors.append(f"⚠️ {label} {val:.0f}mm is too large (max 500mm)")
     if qlen_m is not None and qlu is not None:
         if qlu == "m":
@@ -1252,6 +1252,20 @@ def validate_odd_inputs(cthk_mm=None, cwid_mm=None, clen_val=None, clu=None,
             if qlen_m < 1:  errors.append(f"⚠️ Quote length {qlen_m}ft is too short (min 1ft)")
             if qlen_m > 22: errors.append(f"⚠️ Quote length {qlen_m}ft is too long (max 22ft)")
     return errors
+
+def check_dimension_plausible_mm(mm_val, label, min_mm=20, max_mm=500):
+    """Returns a warning string if mm_val looks unrealistic for a timber
+    width/thickness, else None. A missing '\"' suffix is the most common
+    cause of an implausibly small value, so the hint suggests that reading."""
+    if mm_val is None:
+        return None
+    if mm_val < min_mm:
+        _as_inch_mm = round(mm_val * 25, 1)
+        return (f"{label} {mm_val:g}mm looks too small for timber (min {min_mm}mm) — "
+                f"did you forget a \"? {mm_val:g}\" would be {_as_inch_mm:g}mm.")
+    if mm_val > max_mm:
+        return f"{label} {mm_val:g}mm looks unusually large (max {max_mm}mm) — double-check this is right."
+    return None
 
 def parse_dimension_string(raw):
     """Parse a free-text dimension string into (thk_mm, wid_mm, len_mm).
@@ -3231,6 +3245,15 @@ with tab_nego:
         _scr_nom_w = mm_to_nominal_inch(_scr_w); _scr_nom_h = mm_to_nominal_inch(_scr_h)
         st.caption(f"🪄 Read as: {_scr_w:g}mm ({_scr_nom_w}\") × {_scr_h:g}mm ({_scr_nom_h}\") × {_scr_ft:g}ft "
                    f"— edit the text above if this isn't right.")
+
+        _scr_plaus_warnings = [
+            w for w in [
+                check_dimension_plausible_mm(_scr_w, "Width"),
+                check_dimension_plausible_mm(_scr_h, "Thickness"),
+            ] if w
+        ]
+        if _scr_plaus_warnings:
+            render_flash_alert(" ".join(_scr_plaus_warnings), level="warning")
 
         if _scr_w > 0 and _scr_h > 0 and _scr_ft > 0:
             _scr_raw, _scr_pcs, _scr_price = calc_from_mm(_scr_w, _scr_h, _scr_ft, _scr_rate, _scr_nom_w, _scr_nom_h)
