@@ -3412,14 +3412,18 @@ with tab_hist:
     if _expired_list or _soon_list or _delivery_due_list:
         st.divider()
 
-    with st.form("hist_search_form",clear_on_submit=False):
-        hs1,hs2,hs3=st.columns([4,1,1])
-        with hs1:
-            search=st.text_input("🔍 Search",value=st.session_state.hist_search_val,
-                placeholder="Customer name, mobile, or item (e.g. Fire Retardant) — press Enter or click Search",
-                key=f"hist_search_inp_{st.session_state.hist_search_ver}",label_visibility="collapsed")
-        with hs2: search_btn =st.form_submit_button("🔍 Search", use_container_width=True,type="primary")
-        with hs3: refresh_btn=st.form_submit_button("🔄 Refresh",use_container_width=True)
+    sf1, sf2 = st.columns([5,1])
+    with sf1:
+        with st.form("hist_search_form",clear_on_submit=False):
+            hs1,hs2=st.columns([5,1])
+            with hs1:
+                search=st.text_input("🔍 Search",value=st.session_state.hist_search_val,
+                    placeholder="Customer name, mobile, or item (e.g. 18mm casting plywood) — press Enter or click Search",
+                    key=f"hist_search_inp_{st.session_state.hist_search_ver}",label_visibility="collapsed")
+            with hs2: search_btn =st.form_submit_button("🔍 Search", use_container_width=True,type="primary")
+    with sf2:
+        st.markdown("<div style='height:1px'></div>", unsafe_allow_html=True)
+        refresh_btn = st.button("🔄 Refresh", use_container_width=True, key="hist_refresh_btn")
 
     if refresh_btn:
         st.session_state.hist_search_val=""
@@ -3436,11 +3440,14 @@ with tab_hist:
         st.info("No quotes saved yet. Generate a quote and click 'Save to History'.")
     else:
         active_search=st.session_state.hist_search_val.strip()
-        name_matched=[q for q in history
-            if active_search.lower() in q.get("customer","").lower()
-            or active_search in q.get("mobile","")
-            or active_search.lower() in q.get("text","").lower()
-        ] if active_search else history
+        if active_search:
+            _search_words = [w for w in active_search.lower().split() if w]
+            def _quote_matches_search(q):
+                _haystack = f"{q.get('customer','')} {q.get('mobile','')} {q.get('text','')}".lower()
+                return all(w in _haystack for w in _search_words)
+            name_matched = [q for q in history if _quote_matches_search(q)]
+        else:
+            name_matched = history
 
         # ---- Type filter ----
         _type_options = ["All"] + sorted(set(q.get("type","Quote") for q in history))
