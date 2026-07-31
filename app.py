@@ -3412,18 +3412,21 @@ with tab_hist:
     if _expired_list or _soon_list or _delivery_due_list:
         st.divider()
 
-    sf1, sf2 = st.columns([5,1])
+    sf1, sf2, sf3 = st.columns([4,1,1])
     with sf1:
-        with st.form("hist_search_form",clear_on_submit=False):
-            hs1,hs2=st.columns([5,1])
-            with hs1:
-                search=st.text_input("🔍 Search",value=st.session_state.hist_search_val,
-                    placeholder="Customer name, mobile, or item (e.g. 18mm casting plywood) — press Enter or click Search",
-                    key=f"hist_search_inp_{st.session_state.hist_search_ver}",label_visibility="collapsed")
-            with hs2: search_btn =st.form_submit_button("🔍 Search", use_container_width=True,type="primary")
+        search=st.text_input("🔍 Search",value=st.session_state.hist_search_val,
+            placeholder="Customer name, mobile, or item (e.g. 18mm casting plywood) — press Enter to search",
+            key=f"hist_search_inp_{st.session_state.hist_search_ver}",label_visibility="collapsed")
     with sf2:
-        st.markdown("<div style='height:1px'></div>", unsafe_allow_html=True)
+        search_btn = st.button("🔍 Search", use_container_width=True, type="primary", key="hist_search_btn")
+    with sf3:
         refresh_btn = st.button("🔄 Refresh", use_container_width=True, key="hist_refresh_btn")
+
+    # A plain text_input (no form) already reruns the script on Enter/blur, and
+    # `search` above reflects the freshly-typed text on that same rerun — so we
+    # sync it into hist_search_val unconditionally rather than waiting on a
+    # button click. The Search button still works too, it's just redundant.
+    st.session_state.hist_search_val = search
 
     if refresh_btn:
         st.session_state.hist_search_val=""
@@ -3431,7 +3434,6 @@ with tab_hist:
         st.session_state.expiry_banner_checked = False
         st.session_state.expiring_soon_checked = False
         st.rerun()
-    elif search_btn: st.session_state.hist_search_val=search
 
     with st.spinner("Loading history from cloud..."):
         history=load_history()
