@@ -1259,30 +1259,26 @@ def parse_dimension_string(raw):
     Handles mixed units per token — each number evaluated independently:
       - suffix 'in', 'IN', or '"'  → value × 25   (trade: 1" = 25mm)
       - suffix 'ft', 'FT', or "'"  → value × 300  (trade: 1' = 12" = 300mm)
+      - suffix 'm' or 'M' (bare, not 'mm')  → value × 1000 (metres)
       - suffix 'mm', 'MM' or none  → value as mm
     Examples:
       10inx8inx1600mm  →  t=250, w=200, l=1600
       10"x8"x20"       →  t=250, w=200, l=500
       8"x4"x14'        →  t=100, w=200, l=4200  (14ft → 4.2m)
       200x400x1600     →  t=200, w=400, l=1600
+      2"x1"x1.5m       →  t=25,  w=50,  l=1500  (1.5m → 1500mm)
     Returns dict with keys 't','w','l' (floats in mm), or None on failure.
     """
     import re
 
-    def _to_mm(val_str, suffix):
-        v = float(val_str)
-        if suffix.upper().replace('"','IN') in ('IN','IN',''):
-            # detect if suffix is inch
-            pass
-        return v
-
     # Extract tokens: each token is (number, unit_suffix)
-    # Pattern: optional label (T/W/L), number, optional unit (in/ft/mm/"/')
+    # Pattern: optional label (T/W/L), number, optional unit (in/ft/m/mm/"/')
+    # 'mm'/'MM' must be tried before bare 'm'/'M' so "3000mm" doesn't stop at 1 char.
     token_re = re.compile(
         r'(?:[TWL]\s*)?'          # optional label prefix
         r'(\d+(?:\.\d+)?)'        # number
         r'\s*'
-        r'(in|IN|ft|FT|mm|MM|"|\')?',   # optional unit suffix
+        r'(in|IN|ft|FT|mm|MM|m|M|"|\')?',   # optional unit suffix
         re.IGNORECASE
     )
 
@@ -1297,6 +1293,8 @@ def parse_dimension_string(raw):
             v = round(v * 25, 1)    # trade: 1" = 25mm
         elif unit in ('FT', "'"):
             v = round(v * 300, 1)   # trade: 1' = 12" = 300mm
+        elif unit == 'M':
+            v = round(v * 1000, 1)  # metres → mm
         # mm or no suffix → keep as mm
         tokens.append(v)
 
@@ -3217,16 +3215,29 @@ with tab_nego:
     # ---------------------------------------------------------------
     st.markdown("##### Quick scratch calculator")
     st.caption("No saved quote needed — just checking a size on the fly.")
-    sc1, sc2, sc3, sc4 = st.columns(4)
-    with sc1: _scr_w = st.number_input("Width (mm)", min_value=0.0, value=100.0, step=1.0, key="nego_scr_w")
-    with sc2: _scr_h = st.number_input("Height (mm)", min_value=0.0, value=50.0, step=1.0, key="nego_scr_h")
-    with sc3: _scr_ft = st.number_input("Length (ft)", min_value=0.5, value=10.0, step=0.5, key="nego_scr_ft")
-    with sc4: _scr_rate = st.number_input("Your normal rate (S$/ton)", min_value=0.0, value=3500.0, step=50.0, key="nego_scr_rate")
+    sc_dim, sc4 = st.columns([3,1])
+    with sc_dim:
+        _scr_dim_raw = st.text_input("Dimensions", value="100x50x10ft",
+            key="nego_scr_dim_raw",
+            placeholder='e.g. 145x20x10ft, 4"x2"x3000mm, 2"x1"x1.5m',
+            help='Mix units freely — mm, in/", ft/\' all work. No suffix on width/thickness defaults to mm.')
+    with sc4:
+        _scr_rate = st.number_input("Your normal rate (S$/ton)", min_value=0.0, value=3500.0, step=50.0, key="nego_scr_rate")
 
-    if _scr_w > 0 and _scr_h > 0 and _scr_ft > 0:
-        _scr_raw, _scr_pcs, _scr_price = calc_from_mm(_scr_w, _scr_h, _scr_ft, _scr_rate)
-        st.caption(f"pcs/ton: {_scr_pcs}  ·  at your normal rate this prices at S${_scr_price}/pc")
-        render_bidirectional_rate_calc("scratch", _scr_pcs, _scr_rate, _scr_price)
+    _scr_parsed = parse_dimension_string(_scr_dim_raw)
+    if _scr_parsed and _scr_parsed["l"] is not None:
+        _scr_h = _scr_parsed["t"]; _scr_w = _scr_parsed["w"]
+        _scr_ft = round(_scr_parsed["l"] / 300, 2)  # trade: 1ft = 300mm
+        _scr_nom_w = mm_to_nominal_inch(_scr_w); _scr_nom_h = mm_to_nominal_inch(_scr_h)
+        st.caption(f"🪄 Read as: {_scr_w:g}mm ({_scr_nom_w}\") × {_scr_h:g}mm ({_scr_nom_h}\") × {_scr_ft:g}ft "
+                   f"— edit the text above if this isn't right.")
+
+        if _scr_w > 0 and _scr_h > 0 and _scr_ft > 0:
+            _scr_raw, _scr_pcs, _scr_price = calc_from_mm(_scr_w, _scr_h, _scr_ft, _scr_rate, _scr_nom_w, _scr_nom_h)
+            st.caption(f"pcs/ton: {_scr_pcs}  ·  at your normal rate this prices at S${_scr_price}/pc")
+            render_bidirectional_rate_calc("scratch", _scr_pcs, _scr_rate, _scr_price)
+    else:
+        st.caption("⚠️ Couldn't find 3 dimensions — try a format like 145x20x10ft or 4\"x2\"x3000mm.")
 
 # ============================================================
 # TAB 4 — SUPPLIERS
