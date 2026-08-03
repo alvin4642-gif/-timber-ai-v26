@@ -66,7 +66,7 @@ def add_working_days(start_date, n):
             counted += 1
     return d
 
-st.set_page_config(layout="wide", page_title="Timber AI Assistant V35", page_icon="🪵")
+st.set_page_config(layout="wide", page_title="Timber AI Assistant V36", page_icon="🪵")
 
 # ============================================================
 # CSS
@@ -125,6 +125,16 @@ PLY_GRADES = [
     "Casting Black China", "Casting Black Vietnam",
     "Marine BS1088", "T2 Marine", "Fire Retardant BS476", "Birch Plywood"
 ]
+
+# Internal grade keys (used for dict lookups / storage) vs. the fuller name
+# shown to users and customers. Add entries here to expand a display label
+# without touching any PLY_COST / PLY_SELL / PLY_MOQ / PLY_ACTUAL keys.
+PLY_GRADE_DISPLAY = {
+    "Fire Retardant BS476": "Fire Retardant BS476 Part 7 Class 1",
+}
+def grade_display(g):
+    """Return the full customer/staff-facing label for a plywood grade."""
+    return PLY_GRADE_DISPLAY.get(g, g)
 
 # ============================================================
 # STANDARD SIZES DATABASE — all sizes 6~22 ft
@@ -603,7 +613,7 @@ def reset_all():
 st.markdown("""
 <div class="app-header">
   <div class="app-header-title">🪵 Timber AI Assistant
-    <span style="background:#1D9E75;color:white;font-size:13px;padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle">V35</span>
+    <span style="background:#1D9E75;color:white;font-size:13px;padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle">V36</span>
   </div>
   <div class="app-header-sub">Professional Quoting System &nbsp;·&nbsp; Prices in SGD</div>
 </div>
@@ -1203,7 +1213,7 @@ def normalize_items_for_negotiation(raw_items, kind):
         for it in raw_items:
             normalized.append({
                 "kind": "plywood",
-                "label": f"{it['grade']} {it['thk']}mm",
+                "label": f"{grade_display(it['grade'])} {it['thk']}mm",
                 "grade": it["grade"], "thk": it["thk"],
                 "qty": it["actual_qty"], "cost": it["cost"],
                 "price_per_pc": it.get("sell_rounded", it["sell"]),
@@ -1634,7 +1644,7 @@ def parsed_to_odd_item(p, species_rate_map):
     }
 
 # ============================================================
-# SHARED UI HELPERS (V35) — used by Quote Builder / Odd Size /
+# SHARED UI HELPERS (V36) — used by Quote Builder / Odd Size /
 # Plywood tabs to avoid triplicated card/pricing/output code.
 # ============================================================
 
@@ -2670,14 +2680,14 @@ with tab_ply:
         grade_cols = st.columns(len(PLY_GRADES))
         for i, g in enumerate(PLY_GRADES):
             with grade_cols[i]:
-                if st.button(g, key=f"gtab_{i}",
+                if st.button(grade_display(g), key=f"gtab_{i}",
                              type="primary" if st.session_state.sel_grade == g else "secondary",
                              use_container_width=True):
                     st.session_state.sel_grade = g; st.rerun()
 
         st.divider()
         sel = st.session_state.sel_grade
-        with st.expander(f"📋 {sel} — Price Reference (click to view)", expanded=False):
+        with st.expander(f"📋 {grade_display(sel)} — Price Reference (click to view)", expanded=False):
             if sel in PLY_SELL:
                 tbl_rows = []
                 for thk in sorted(PLY_SELL[sel].keys()):
@@ -2694,7 +2704,7 @@ with tab_ply:
 
         if sel in PLY_SELL:
             _ref_thk_options = sorted(PLY_SELL[sel].keys())
-            with st.expander(f"✏️ Update cost price for {sel}", expanded=False):
+            with st.expander(f"✏️ Update cost price for {grade_display(sel)}", expanded=False):
                 _ref_thk_key = f"refthk_{sel}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
                 ref_thk = st.selectbox("Thickness (mm)", _ref_thk_options, key=_ref_thk_key)
                 ref_cost_def = effective_ply_cost(sel, ref_thk)
@@ -2730,7 +2740,8 @@ with tab_ply:
 
         pg1, pg2 = st.columns(2)
         with pg1:
-            p_grade=st.selectbox("Grade",PLY_GRADES,index=PLY_GRADES.index(st.session_state.ply_cur_grade),key="p_gr_sel")
+            p_grade=st.selectbox("Grade",PLY_GRADES,index=PLY_GRADES.index(st.session_state.ply_cur_grade),
+                                  format_func=grade_display,key="p_gr_sel")
             st.session_state.ply_cur_grade=p_grade
         with pg2:
             avail_thk=sorted(PLY_SELL.get(p_grade,{}).keys())
@@ -2804,7 +2815,7 @@ with tab_ply:
 
                 _ply_sell_r = item.get("sell_rounded", ceil_10cents(item["sell"]))
                 render_item_card(
-                    title=f"{item['grade']} {item['thk']}mm",
+                    title=f"{grade_display(item['grade'])} {item['thk']}mm",
                     pills=_ply_pills,
                     detail_line=f"Profit: S${_ply_profit_total:,.2f}",
                     price_line=price_line_with_cca(_ply_sell_r, _ply_cca_on, cca_rate,
@@ -2869,7 +2880,7 @@ with tab_ply:
                     _ply_log_rows["Total Amount"] = f"S${_ply_line_total:,.2f}"
                     _ply_margin_pct = round(profit_total / _ply_line_total * 100, 1) if _ply_line_total else 0
                     ply_log.append({
-                        "heading":f"{item['grade']} {item['thk']}mm{_ply_cca_badge_html}",
+                        "heading":f"{grade_display(item['grade'])} {item['thk']}mm{_ply_cca_badge_html}",
                         "rows":_ply_log_rows,
                         "profit_line":f"S${profit_total:,.2f}","margin_line":f"{_ply_margin_pct}%","small_qty":False,
                         "moq_flag":item["moq_flag"],"moq_note":f"min {item['actual_qty']} sheets (requested {item['qty']})"
@@ -2878,11 +2889,11 @@ with tab_ply:
                         _ply_has_cca = True
                         _ply_grand_with_cca += (_ply_line_total - item["line_total"])
                         ply_reply.append(
-                            f"{item['grade']} plywood with anti-termite / insect borer treatment ({cca_colour})\n"
+                            f"{grade_display(item['grade'])} plywood with anti-termite / insect borer treatment ({cca_colour})\n"
                             f"{item['thk']}mm x 1.22m x 2.44m @ S${_combined_ply:.2f}/sheet x {item['actual_qty']} = S${_ply_line_total:,.2f}{moq_note_txt}"
                         )
                     else:
-                        cl=f"{item['grade']} plywood {item['thk']}mm x 1.22m x 2.44m @ S${_sell_r:.2f}/sheet x {item['actual_qty']} = S${_ply_line_total:,.2f}{moq_note_txt}"
+                        cl=f"{grade_display(item['grade'])} plywood {item['thk']}mm x 1.22m x 2.44m @ S${_sell_r:.2f}/sheet x {item['actual_qty']} = S${_ply_line_total:,.2f}{moq_note_txt}"
                         ply_reply.append(cl)
 
                 has_fr=any("Fire Retardant" in x["grade"] for x in st.session_state.ply_items)
@@ -2911,7 +2922,7 @@ with tab_ply:
             {"Grade":"BB/CC Furniture",      "Nominal":"3mm","Actual":"+-2.2mm","Supplier":"Ying Chuan","Notes":"T2 grade"},
             {"Grade":"WBP (TA)",             "Nominal":"6mm","Actual":"+-5.5mm","Supplier":"Ying Chuan","Notes":"TA grade"},
             {"Grade":"Marine BS1088",        "Nominal":"9mm","Actual":"+-8.5mm","Supplier":"Ying Chuan","Notes":"BS1088 certified"},
-            {"Grade":"Fire Retardant BS476", "Nominal":"3mm","Actual":"+-2.8mm","Supplier":"Ying Chuan","Notes":"BS476 Part 7 Class 1"},
+            {"Grade":"Fire Retardant BS476 Part 7 Class 1", "Nominal":"3mm","Actual":"+-2.8mm","Supplier":"Ying Chuan","Notes":"—"},
         ])
 
 # ============================================================
@@ -3099,7 +3110,7 @@ with tab_combined:
                     combined_total += _ply_line_total
                     combined_cost += item["cost"] * item["actual_qty"]
                     combined_log.append({
-                        "heading": f"{item['grade']} {item['thk']}mm{_ply_cca_badge_html}",
+                        "heading": f"{grade_display(item['grade'])} {item['thk']}mm{_ply_cca_badge_html}",
                         "rows": _ply_log_rows,
                         "profit_line": f"S${profit_total:,.2f}", "small_qty": False,
                         "moq_flag": item["moq_flag"], "moq_note": f"min {item['actual_qty']} sheets (requested {item['qty']})"
@@ -3108,12 +3119,12 @@ with tab_combined:
                         has_fr = True
                     if _ply_item_cca:
                         _ply_reply.append(
-                            f"{item['grade']} plywood with anti-termite / insect borer treatment ({cca_colour})\n"
+                            f"{grade_display(item['grade'])} plywood with anti-termite / insect borer treatment ({cca_colour})\n"
                             f"{item['thk']}mm x 1.22m x 2.44m @ S${_combined_ply:.2f}/sheet x {item['actual_qty']} = S${_ply_line_total:,.2f}{moq_note_txt}"
                         )
                     else:
                         _ply_reply.append(
-                            f"{item['grade']} plywood {item['thk']}mm x 1.22m x 2.44m @ S${_sell_r:.2f}/sheet x {item['actual_qty']} = S${_ply_line_total:,.2f}{moq_note_txt}"
+                            f"{grade_display(item['grade'])} plywood {item['thk']}mm x 1.22m x 2.44m @ S${_sell_r:.2f}/sheet x {item['actual_qty']} = S${_ply_line_total:,.2f}{moq_note_txt}"
                         )
 
             # ---- Assemble sections, joining with a divider only between sections that actually have content ----
@@ -3347,7 +3358,7 @@ with tab_sup:
 
     sup1, sup2 = st.tabs(["📊 Cost vs Selling Price", "📈 Profit Summary"])
     with sup1:
-        grade_sel=st.selectbox("Select Grade",PLY_GRADES,key="sup_grade")
+        grade_sel=st.selectbox("Select Grade",PLY_GRADES,format_func=grade_display,key="sup_grade")
         if grade_sel in PLY_COST:
             _grade_suppliers = sorted([
                 s for s, costs in st.session_state.supplier_compare_costs.items()
@@ -3380,8 +3391,8 @@ with tab_sup:
                         if _e["terms"]:
                             _cell += f" <span style='color:#888;font-size:11px'>({_e['terms']})</span>"
                         _row[s] = _cell
-                _row["Sell Price"]=f"S${sell}"
-                _row["Profit"]=f"S${profit}"
+                _row["Sell Price"]=f"S${sell} <span style='color:#888;font-size:11px'>(YC)</span>"
+                _row["Profit"]=f"S${profit} <span style='color:#888;font-size:11px'>(YC)</span>"
                 rows.append(_row)
             render_table(rows)
             if _grade_suppliers:
@@ -3443,7 +3454,7 @@ with tab_sup:
             avg_sell=round(sum(sells)/len(sells),2) if sells else 0
             avg_cost=round(sum(costs)/len(costs),2) if costs else 0
             avg_profit=round(avg_sell-avg_cost,2)
-            margin_rows.append({"Grade":grade,"Avg Cost":f"S${avg_cost}","Avg Sell":f"S${avg_sell}",
+            margin_rows.append({"Grade":grade_display(grade),"Avg Cost":f"S${avg_cost}","Avg Sell":f"S${avg_sell}",
                 "Avg Profit":f"S${avg_profit}"})
         render_table(margin_rows)
 
@@ -3916,4 +3927,4 @@ with tab_hist:
 # FOOTER
 # ============================================================
 st.markdown("---")
-st.caption("Timber AI Assistant V35  · ALVIN  ")
+st.caption("Timber AI Assistant V36  · ALVIN  ")
