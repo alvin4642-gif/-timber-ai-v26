@@ -775,10 +775,10 @@ def save_ply_rate_log(log):
         st.error(f"❌ Network error: {str(e)}"); return False
 
 def load_supplier_compare_costs():
-    """Returns {"SupplierName": {"Grade|thk": cost}} for alternate-supplier
-    costs entered for comparison only. These never affect quotes/profit —
-    Ying Chuan (PLY_COST / overrides) stays the authoritative cost.
-    Falls back to {} if the gist file doesn't exist yet."""
+    """Returns {"SupplierName": {"Grade|thk": {"cost": float, "terms": str}}}
+    for alternate-supplier costs entered for comparison only. These never
+    affect quotes/profit — Ying Chuan (PLY_COST / overrides) stays the
+    authoritative cost. Falls back to {} if the gist file doesn't exist yet."""
     gist_id = st.secrets.get("gist_id", "")
     if not gist_id: return {}
     try:
@@ -807,13 +807,24 @@ def save_supplier_compare_costs(data):
     except Exception as e:
         st.error(f"❌ Network error: {str(e)}"); return False
 
-def update_supplier_compare_cost(supplier, grade, thk, new_cost):
-    """Adds/updates one (supplier, grade, thk) comparison cost. Returns True
-    on success. This is comparison-only data — never used for quote pricing."""
+def _supplier_compare_entry(supplier, grade, thk):
+    """Reads one comparison entry as {"cost": float|None, "terms": str}."""
+    key = _ply_override_key(grade, thk)
+    val = st.session_state.supplier_compare_costs.get(supplier, {}).get(key)
+    if val is None:
+        return {"cost": None, "terms": ""}
+    if isinstance(val, dict):
+        return {"cost": val.get("cost"), "terms": val.get("terms", "")}
+    return {"cost": val, "terms": ""}  # backward-compat if ever saved as a bare number
+
+def update_supplier_compare_cost(supplier, grade, thk, new_cost, terms=""):
+    """Adds/updates one (supplier, grade, thk) comparison cost + optional
+    terms (e.g. "MOQ 500pcs"). Returns True on success. Comparison-only —
+    never used for quote pricing."""
     data = load_supplier_compare_costs()
     data.setdefault(supplier, {})
     key = _ply_override_key(grade, thk)
-    data[supplier][key] = round(float(new_cost), 2)
+    data[supplier][key] = {"cost": round(float(new_cost), 2), "terms": terms.strip()}
     ok = save_supplier_compare_costs(data)
     if ok:
         st.session_state.supplier_compare_costs = data  # refresh in-memory cache
@@ -2668,10 +2679,6 @@ with tab_ply:
         sel = st.session_state.sel_grade
         with st.expander(f"📋 {sel} — Price Reference (click to view)", expanded=False):
             if sel in PLY_SELL:
-                _grade_suppliers = sorted([
-                    s for s, costs in st.session_state.supplier_compare_costs.items()
-                    if any(_ply_override_key(sel, thk) in costs for thk in PLY_SELL[sel].keys())
-                ])
                 tbl_rows = []
                 for thk in sorted(PLY_SELL[sel].keys()):
                     cost=effective_ply_cost(sel,thk); sell_def=PLY_SELL[sel][thk]
@@ -2680,35 +2687,10 @@ with tab_ply:
                     notes=[]
                     if note: notes.append(note)
                     if moq>1: notes.append(f"MOQ {moq} sheets")
-                    _row = {"Thickness":f"{thk}mm"}
-                    _cheapest = cost
-                    _skey = _ply_override_key(sel, thk)
-                    _supplier_vals = {}
-                    for s in _grade_suppliers:
-                        _scost = st.session_state.supplier_compare_costs.get(s, {}).get(_skey)
-                        _supplier_vals[s] = _scost
-                        if _scost is not None and _scost < _cheapest:
-                            _cheapest = _scost
-                    _yc_cell = f"S${cost}"
-                    if _grade_suppliers:
-                        _yc_cell = f"<b style='color:#0F6E56'>S${cost}</b>" if cost == _cheapest else f"S${cost}"
-                    _row["YC Cost"] = _yc_cell
-                    for s in _grade_suppliers:
-                        _scost = _supplier_vals[s]
-                        if _scost is None:
-                            _row[s] = "—"
-                        elif _scost == _cheapest:
-                            _row[s] = f"<b style='color:#0F6E56'>S${_scost}</b>"
-                        else:
-                            _row[s] = f"S${_scost}"
-                    _row["Sell Price"]=f"S${sell_def}"
-                    _row["Profit"]=f"S${profit}"
-                    _row["Margin %"]=f"{round(profit/sell_def*100,1) if sell_def else 0}%"
-                    _row["Notes"]=" · ".join(notes) if notes else "—"
-                    tbl_rows.append(_row)
+                    tbl_rows.append({"Thickness":f"{thk}mm","YC Cost":f"S${cost}","Sell Price":f"S${sell_def}",
+                        "Profit":f"S${profit}","Margin %":f"{round(profit/sell_def*100,1) if sell_def else 0}%",
+                        "Notes":" · ".join(notes) if notes else "—"})
                 render_table(tbl_rows)
-                if _grade_suppliers:
-                    st.caption(f"💲 Cheapest cost per row highlighted. Comparison only — quotes still use Ying Chuan (YC Cost).")
 
         if sel in PLY_SELL:
             _ref_thk_options = sorted(PLY_SELL[sel].keys())
@@ -2739,45 +2721,6 @@ with tab_ply:
                     ])
                 else:
                     st.caption("No cost changes recorded yet for this item.")
-
-            with st.expander(f"🔍 Compare suppliers for {sel}", expanded=False):
-                st.caption("For reference only — never used for quote pricing. Ying Chuan stays the cost your quotes are based on.")
-                _existing_suppliers = sorted(st.session_state.supplier_compare_costs.keys())
-                _supplier_choice_options = _existing_suppliers + ["➕ New supplier..."]
-                cs1, cs2 = st.columns(2)
-                with cs1:
-                    _supplier_choice = st.selectbox("Supplier", _supplier_choice_options, key=f"supcmp_sel_{sel}")
-                    if _supplier_choice == "➕ New supplier...":
-                        _supplier_name = st.text_input("New supplier name", key=f"supcmp_newname_{sel}").strip()
-                    else:
-                        _supplier_name = _supplier_choice
-                with cs2:
-                    _supcmp_thk_key = f"supcmp_thk_{sel}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
-                    supcmp_thk = st.selectbox("Thickness (mm)", _ref_thk_options, key=_supcmp_thk_key)
-
-                _existing_val = st.session_state.supplier_compare_costs.get(_supplier_name, {}).get(_ply_override_key(sel, supcmp_thk))
-                cs3, cs4, cs5 = st.columns([2,1,1])
-                with cs3:
-                    _supcmp_cost_key = f"supcmp_cost_{sel}_{supcmp_thk}_{_supplier_name}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
-                    _supcmp_cost = st.number_input(f"{_supplier_name or 'Supplier'}'s cost (S$/sheet)", min_value=0.0,
-                        value=float(_existing_val) if _existing_val is not None else 0.0,
-                        step=0.5, format="%.2f", key=_supcmp_cost_key)
-                with cs4:
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    if st.button("💾 Save", key=f"supcmp_save_{sel}_{supcmp_thk}", use_container_width=True):
-                        if not _supplier_name:
-                            st.error("❌ Enter a supplier name first.")
-                        elif update_supplier_compare_cost(_supplier_name, sel, supcmp_thk, _supcmp_cost):
-                            st.success(f"✅ Saved {_supplier_name} — {sel} {supcmp_thk}mm: S\\${_supcmp_cost:.2f}")
-                            st.rerun()
-                        else:
-                            st.error("❌ Could not save — check gist_id / github_token in Streamlit secrets.")
-                with cs5:
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    if _existing_val is not None:
-                        if st.button("🗑️ Remove", key=f"supcmp_del_{sel}_{supcmp_thk}", use_container_width=True):
-                            if remove_supplier_compare_cost(_supplier_name, sel, supcmp_thk):
-                                st.rerun()
 
         st.divider()
         render_customer_section("ply")
@@ -3406,16 +3349,90 @@ with tab_sup:
     with sup1:
         grade_sel=st.selectbox("Select Grade",PLY_GRADES,key="sup_grade")
         if grade_sel in PLY_COST:
+            _grade_suppliers = sorted([
+                s for s, costs in st.session_state.supplier_compare_costs.items()
+                if any(_ply_override_key(grade_sel, thk) in costs for thk in PLY_COST[grade_sel].keys())
+            ])
             rows=[]
             for thk,cost in sorted(PLY_COST[grade_sel].items()):
                 sell=PLY_SELL.get(grade_sel,{}).get(thk,0)
                 profit=round(sell-cost,2)
                 note=PLY_ACTUAL.get(grade_sel,{}).get(thk,"")
-                rows.append({"Thickness":f"{thk}mm"+(f" ({note})" if note else ""),
-                    "Ying Chuan Cost":f"S${cost}","Your Selling Price":f"S${sell}",
-                    "Profit/sheet":f"S${profit}"})
+                _cheapest = cost
+                _entries = {}
+                for s in _grade_suppliers:
+                    _e = _supplier_compare_entry(s, grade_sel, thk)
+                    _entries[s] = _e
+                    if _e["cost"] is not None and _e["cost"] < _cheapest:
+                        _cheapest = _e["cost"]
+                _yc_cell = f"S${cost}"
+                if _grade_suppliers and cost == _cheapest:
+                    _yc_cell = f"<b style='color:#0F6E56'>S${cost}</b>"
+                _row = {"Thickness":f"{thk}mm"+(f" ({note})" if note else ""), "Ying Chuan":_yc_cell}
+                for s in _grade_suppliers:
+                    _e = _entries[s]
+                    if _e["cost"] is None:
+                        _row[s] = "—"
+                    else:
+                        _cell = f"S${_e['cost']}"
+                        if _e["cost"] == _cheapest:
+                            _cell = f"<b style='color:#0F6E56'>{_cell}</b>"
+                        if _e["terms"]:
+                            _cell += f" <span style='color:#888;font-size:11px'>({_e['terms']})</span>"
+                        _row[s] = _cell
+                _row["Sell Price"]=f"S${sell}"
+                _row["Profit"]=f"S${profit}"
+                rows.append(_row)
             render_table(rows)
-        st.info("More suppliers can be added once you onboard them.")
+            if _grade_suppliers:
+                st.caption("💲 Cheapest cost per row highlighted. Reference only — quotes always use Ying Chuan.")
+        else:
+            _grade_suppliers = []
+
+        st.divider()
+        with st.expander("➕ Add / update a supplier's rate", expanded=False):
+            st.caption("For reference only — never used for quote pricing. Ying Chuan stays the cost your quotes are based on.")
+            _all_suppliers = sorted(st.session_state.supplier_compare_costs.keys())
+            _supplier_choice_options = _all_suppliers + ["➕ New supplier..."]
+            cs1, cs2 = st.columns(2)
+            with cs1:
+                _supplier_choice = st.selectbox("Supplier", _supplier_choice_options, key=f"supcmp_sel_{grade_sel}")
+                if _supplier_choice == "➕ New supplier...":
+                    _supplier_name = st.text_input("New supplier name", key=f"supcmp_newname_{grade_sel}").strip()
+                else:
+                    _supplier_name = _supplier_choice
+            with cs2:
+                _supcmp_thk_options = sorted(PLY_COST.get(grade_sel,{}).keys())
+                _supcmp_thk_key = f"supcmp_thk_{grade_sel}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
+                supcmp_thk = st.selectbox("Thickness (mm)", _supcmp_thk_options, key=_supcmp_thk_key)
+
+            _existing_entry = _supplier_compare_entry(_supplier_name, grade_sel, supcmp_thk) if _supplier_name else {"cost":None,"terms":""}
+            cs3, cs4 = st.columns(2)
+            with cs3:
+                _supcmp_cost_key = f"supcmp_cost_{grade_sel}_{supcmp_thk}_{_supplier_name}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
+                _supcmp_cost = st.number_input(f"{_supplier_name or 'Supplier'}'s cost (S$/sheet)", min_value=0.0,
+                    value=float(_existing_entry["cost"]) if _existing_entry["cost"] is not None else 0.0,
+                    step=0.5, format="%.2f", key=_supcmp_cost_key)
+            with cs4:
+                _supcmp_terms_key = f"supcmp_terms_{grade_sel}_{supcmp_thk}_{_supplier_name}".replace(" ","_").replace("/","_").replace("(","").replace(")","")
+                _supcmp_terms = st.text_input("Terms (optional)", value=_existing_entry["terms"],
+                    placeholder="e.g. MOQ 500pcs", key=_supcmp_terms_key)
+
+            cs5, cs6 = st.columns(2)
+            with cs5:
+                if st.button("💾 Save", key=f"supcmp_save_{grade_sel}_{supcmp_thk}", use_container_width=True):
+                    if not _supplier_name:
+                        st.error("❌ Enter a supplier name first.")
+                    elif update_supplier_compare_cost(_supplier_name, grade_sel, supcmp_thk, _supcmp_cost, _supcmp_terms):
+                        st.success(f"✅ Saved {_supplier_name} — {grade_sel} {supcmp_thk}mm: S\\${_supcmp_cost:.2f}")
+                        st.rerun()
+                    else:
+                        st.error("❌ Could not save — check gist_id / github_token in Streamlit secrets.")
+            with cs6:
+                if _existing_entry["cost"] is not None:
+                    if st.button("🗑️ Remove", key=f"supcmp_del_{grade_sel}_{supcmp_thk}", use_container_width=True):
+                        if remove_supplier_compare_cost(_supplier_name, grade_sel, supcmp_thk):
+                            st.rerun()
 
     with sup2:
         margin_rows=[]
