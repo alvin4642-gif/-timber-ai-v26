@@ -114,7 +114,7 @@ st.markdown("""
 # ============================================================
 # CONSTANTS
 # ============================================================
-SPECIES   = ["Kapur", "Balau", "Chengal", "Mixed Keruing", "Pure Keruing"]
+SPECIES   = ["Kapur", "Balau", "Chengal", "Mixed Keruing", "Pure Keruing", "Red Balau"]
 SMALL_QTY = 10
 
 # inch nominal → actual mm (for display only in Quote Builder)
@@ -548,6 +548,7 @@ SPECIES_MAP = {
     "keruing":       "Mixed Keruing",
     "chengal":"Chengal","chengai":"Chengal","chenggal":"Chengal",
     "kapur":"Kapur","kapor":"Kapur",
+    "red balau":"Red Balau","redbalau":"Red Balau",
     "balau":"Balau","balu":"Balau",
     "坡楼":"Chengal","柚木":"Chengal","重坡楼":"Chengal",
     "山樟":"Kapur","樟木":"Kapur","卡布":"Kapur",
@@ -620,7 +621,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Default rate values — used as value= args in number_input widgets
-DEFAULT_RATES = {"Kapur": 3800, "Balau": 5500, "Chengal": 6000, "Mixed Keruing": 650, "Pure Keruing": 1000}
+DEFAULT_RATES = {"Kapur": 3800, "Balau": 5500, "Chengal": 6000, "Mixed Keruing": 650, "Pure Keruing": 1000, "Red Balau": 1800}
 DEFAULT_CCA_COLOUR = "Brown — TimberTone"
 DEFAULT_CCA_RATE   = 5.0
 
@@ -628,14 +629,15 @@ DEFAULT_CCA_RATE   = 5.0
 # RATE INPUTS
 # ============================================================
 st.subheader("Current Rates (SGD/ton)")
-rc1, rc2, rc3, rc4, rc5, rc6 = st.columns([2, 2, 2, 2, 2, 1])
+rc1, rc2, rc3, rc4, rc5, rc6, rc7 = st.columns([2, 2, 2, 2, 2, 2, 1])
 _rk = st.session_state.rate_reset_key  # changes on reset → forces fresh widget
 with rc1: kapur_rate    = st.number_input("Kapur",         min_value=0, value=3800, step=50, key=f"r_kapur_{_rk}")
 with rc2: balau_rate    = st.number_input("Balau",         min_value=0, value=5500, step=50, key=f"r_balau_{_rk}")
 with rc3: cheng_rate    = st.number_input("Chengal",       min_value=0, value=6000, step=50, key=f"r_cheng_{_rk}")
 with rc4: mkeruing_rate = st.number_input("Mixed Keruing", min_value=0, value=650,  step=50, key=f"r_mker_{_rk}")
 with rc5: pkeruing_rate = st.number_input("Pure Keruing",  min_value=0, value=1000, step=50, key=f"r_pker_{_rk}")
-with rc6:
+with rc6: rbalau_rate   = st.number_input("Red Balau",     min_value=0, value=1800, step=50, key=f"r_rbalau_{_rk}")
+with rc7:
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("↩ Reset Rates", use_container_width=True, key="reset_rates_btn"):
         st.session_state.rate_reset_key += 1  # new key suffix → widgets re-instantiate at value= defaults
@@ -646,7 +648,7 @@ with rc6:
 
 species_rate = {
     "Kapur": kapur_rate, "Balau": balau_rate, "Chengal": cheng_rate,
-    "Mixed Keruing": mkeruing_rate, "Pure Keruing": pkeruing_rate
+    "Mixed Keruing": mkeruing_rate, "Pure Keruing": pkeruing_rate, "Red Balau": rbalau_rate
 }
 
 # CCA Treatment inputs — shared across QB, Odd Size, Plywood tabs
