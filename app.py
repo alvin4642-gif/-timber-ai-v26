@@ -1178,6 +1178,13 @@ def price_line_with_cca(base_price, cca_on, cca_rate, qty, unit="pc", unit_plura
                 f'× {qty} {unit_plural} = <b>S${total:,.2f}</b>')
     return f'S${base_price}/{unit} × {qty} {unit_plural} = <b>S${total:,.2f}</b>'
 
+def rate_badge_html(rate):
+    """Green highlighted $/ton tag, shown inline on the price line of QB
+    and Odd Size item cards so the rate used is easy to spot at a glance."""
+    return (f'<span style="background:#DCFCE7;color:#166534;font-weight:600;'
+            f'padding:1px 8px;border-radius:6px;font-size:12px;margin-right:8px;'
+            f'white-space:nowrap">S${rate:,}/ton</span>')
+
 def calc_from_mm(w_mm, h_mm, ft, rate, nom_w=None, nom_h=None):
     """
     Pricing always uses 7200 / nom_w / nom_h / ft.
@@ -1737,7 +1744,7 @@ def render_item_card(title, pills, detail_line, price_line, warn=False,
             "var(--color-background-secondary)"
         )
     pill_html = "".join(
-        f'<span style="font-size:11px;padding:1px 8px;border-radius:99px;'
+        f'<span style="font-size:12px;padding:1px 8px;border-radius:99px;'
         f'background:{pill_bg};color:{text if warn else sub};'
         f'border:0.5px solid {border};margin-left:4px">{p}</span>'
         for p in pills
@@ -1747,8 +1754,7 @@ def render_item_card(title, pills, detail_line, price_line, warn=False,
         if detail_line else ""
     )
     footer_html = (
-        f'<div style="border-top:0.5px solid {border};margin-top:7px;'
-        f'padding-top:6px;font-size:12px;color:{sub}">{footer_note}</div>'
+        f'<div style="margin-top:6px;font-size:12px;color:{sub}">{footer_note}</div>'
         if footer_note else ""
     )
     warn_html = (
@@ -1761,8 +1767,9 @@ def render_item_card(title, pills, detail_line, price_line, warn=False,
         f'<div style="font-weight:500;font-size:14px;color:{text};white-space:nowrap;'
         f'overflow:hidden;text-overflow:ellipsis">{title}{pill_html}{badge_html}</div>'
         f'{detail_html}'
+        f'{footer_html}'
         f'<div style="font-size:13px;color:{sub};margin-top:4px">{price_line}</div>'
-        f'{warn_html}{footer_html}'
+        f'{warn_html}'
         f'</div>',
         unsafe_allow_html=True
     )
@@ -2020,7 +2027,7 @@ with tab_quote:
         for i, item in enumerate(st.session_state.order_items):
             locked_rate  = item["rate"]
             mixed_rates  = len(species_rates_in_order[item["species"]]) > 1
-            _, _, locked_price = calc_from_mm(
+            _, locked_pcs, locked_price = calc_from_mm(
                 item["w_mm"], item["h_mm"], item["ft"], locked_rate,
                 item.get("nom_w"), item.get("nom_h")
             )
@@ -2029,11 +2036,12 @@ with tab_quote:
 
             render_item_card(
                 title=f'{item["species"]} · {item["size"]}',
-                pills=[f"@S${locked_rate:,}/ton"],
+                pills=[],
                 detail_line=None,
-                price_line=price_line_with_cca(locked_price, _cca_on, cca_rate, item["qty"]),
+                price_line=rate_badge_html(locked_rate) + price_line_with_cca(locked_price, _cca_on, cca_rate, item["qty"]),
                 warn=mixed_rates,
                 warn_note=f'Different rate from other {item["species"]} items' if mixed_rates else None,
+                footer_note=f'{locked_pcs} pcs/ton',
                 badge_html=cca_badge_html(_cca_on),
             )
             ic1, ic2, ic3 = st.columns([9, 1, 1])
@@ -2516,12 +2524,12 @@ with tab_odd:
             with _ca:
                 render_item_card(
                     title=f'{item["species"]}',
-                    pills=[
-                        f'@S${item["rate"]:,}/ton' + (' ⚠' if _mixed else ''),
-                        item.get("dim_type", "Sawn").lower(),
-                    ],
-                    detail_line=f'Customer: {item["cust_size"]} → Priced as: {item["quote_size"]}',
-                    price_line=price_line_with_cca(item["price"], _odd_cca_on, cca_rate, item["qty"]),
+                    pills=[item.get("dim_type", "Sawn").lower()],
+                    detail_line=(
+                        f'<b style="text-decoration:underline">Customer: {item["cust_size"]}</b><br>'
+                        f'→ Priced as: {item["quote_size"]}'
+                    ),
+                    price_line=rate_badge_html(item["rate"]) + price_line_with_cca(item["price"], _odd_cca_on, cca_rate, item["qty"]),
                     warn=_mixed,
                     warn_note=f'Different rate from other {item["species"]} items in this quote' if _mixed else None,
                     footer_note=f'{_pcs_floor} pcs/ton',
